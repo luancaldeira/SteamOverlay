@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.1
+
+### Correções
+
+- **Trava de click-through sem saída.** `Ctrl+Alt+S` (e os fallbacks) só escondiam/
+  mostravam a janela — nada desligava o click-through. Com ele ligado, a janela ignora
+  todo clique, inclusive no próprio checkbox que o desligaria e no botão de
+  configurações necessário pra alcançá-lo. Novo atalho global **`Ctrl+Alt+C`**
+  (fallbacks `Ctrl+Shift+C`, `Ctrl+Shift+F11`) sempre desliga o click-through e traz a
+  janela pra frente — ação de recuperação, não um toggle, então não trava de novo.
+
 ## 1.0.0
 
 Reescrita do núcleo de precisão, do caminho de rede e da camada de produto.

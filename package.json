@@ -1,6 +1,6 @@
 {
   "name": "steam-spec-overlay",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Overlay desktop que detecta o jogo aberto no app da Steam e mostra compatibilidade com o PC em tempo real (Windows).",
   "main": "main.js",
   "author": "",

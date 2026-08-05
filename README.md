@@ -8,7 +8,7 @@ Sem digitar nada, sem colar nada, sem procurar os requisitos.
 
 [![plataforma](https://img.shields.io/badge/plataforma-Windows-0078D4)](#)
 [![steam](https://img.shields.io/badge/steam-app%20desktop-171a21)](#)
-[![versão](https://img.shields.io/badge/vers%C3%A3o-1.0.0-35d07f)](../../releases/latest)
+[![versão](https://img.shields.io/badge/vers%C3%A3o-1.0.1-35d07f)](../../releases/latest)
 [![testes](https://img.shields.io/badge/testes-106%20passando-35d07f)](#qualidade)
 [![licença](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
 
@@ -69,8 +69,8 @@ continua funcionando **sem internet**.
 
 **Usuário final** — baixe em [Releases](../../releases/latest):
 
-- `Steam Spec Overlay Setup 1.0.0.exe` — instalador (cria atalho, permite escolher a pasta)
-- `Steam Spec Overlay 1.0.0.exe` — versão portable, roda sem instalar
+- `Steam Spec Overlay Setup 1.0.1.exe` — instalador (cria atalho, permite escolher a pasta)
+- `Steam Spec Overlay 1.0.1.exe` — versão portable, roda sem instalar
 
 > O executável não é assinado (certificado de code signing é pago), então o Windows pode
 > mostrar um aviso do SmartScreen na primeira execução. **Mais informações → Executar

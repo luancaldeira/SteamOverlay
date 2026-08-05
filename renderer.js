@@ -202,7 +202,11 @@ function settingsHint(state) {
       : 'Nenhum atalho global disponível — use o ícone da bandeja.'
   );
   if (state.settings && state.settings.clickThrough) {
-    parts.push('Com click-through ligado, desligue pelo menu da bandeja.');
+    parts.push(
+      state.clickThroughShortcut
+        ? `Click-through ligado — ${state.clickThroughShortcut.replace('CommandOrControl', 'Ctrl')} desliga.`
+        : 'Com click-through ligado, desligue pelo menu da bandeja.'
+    );
   }
   parts.push(`v${state.version || '?'}`);
   return parts.join('  ·  ');

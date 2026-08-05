@@ -129,6 +129,11 @@ A Steam só abre a porta de debug se existir um arquivo vazio chamado
 - Trocar de jogo atualiza sozinho. Sair da página deixa o overlay em espera.
 - Atalho global **`Ctrl+Shift+S`** para mostrar/esconder. Se o combo estiver ocupado, ele
   tenta `Ctrl+Alt+S` e depois `Ctrl+Shift+F10`; o atalho ativo aparece nas configurações.
+- Atalho global **`Ctrl+Alt+C`** sempre desliga o click-through e traz a janela pra frente
+  (fallback `Ctrl+Shift+C`, depois `Ctrl+Shift+F11`). Como o click-through faz a janela
+  ignorar todo clique — inclusive no próprio checkbox que o desliga — mostrar/esconder
+  (`Ctrl+Shift+S`) sozinho não resolve; esse atalho existe justamente pra destravar o app
+  sem precisar clicar nele.
 - **Ícone na bandeja** com mostrar/esconder, sempre-no-topo, click-through, iniciar com o
   Windows e sair. É também a rota de recuperação se nenhum atalho global estiver livre.
 - Arraste pela barra de título para reposicionar — a posição é lembrada.

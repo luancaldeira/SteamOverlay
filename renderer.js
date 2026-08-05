@@ -4,7 +4,10 @@ const $ = (sel) => document.querySelector(sel);
 const app = $('#app');
 
 let lastState = null;
-let reqType = 'recommended'; // user toggle, persisted across updates
+let reqType = null; // resolved from settings on first state, then user-driven
+let settingsOpen = false;
+let gaugeShown = 0;
+let gaugeAnim = null;
 
 // ---- helpers -------------------------------------------------------------
 function band(score) {
@@ -31,25 +34,63 @@ function setMode(state) {
     'no-steam': 'STEAM OFF',
   };
   txt.textContent = labels[state.mode] || '—';
+  modeEl.title =
+    state.mode === 'cdp'
+      ? `detecção automática ativa (porta ${state.cdpPort || '?'})`
+      : 'modo de detecção';
+}
+
+// Count up/down to the new value instead of snapping, so a game switch reads as
+// a measurement rather than a flicker.
+function animateGauge(target) {
+  if (gaugeAnim) cancelAnimationFrame(gaugeAnim);
+  const num = $('#gauge-num');
+  const from = gaugeShown;
+  const to = target;
+  const t0 = performance.now();
+  const dur = 420;
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const v = from + (to - from) * eased;
+    num.textContent = String(Math.round(v));
+    if (p < 1) gaugeAnim = requestAnimationFrame(step);
+    else {
+      gaugeAnim = null;
+      gaugeShown = to;
+    }
+  };
+  gaugeAnim = requestAnimationFrame(step);
 }
 
 function setGauge(value) {
   const num = $('#gauge-num');
   const arc = $('#gauge-value');
   const needle = $('#needle');
-  const verdict = $('#verdict');
   if (value == null) {
+    if (gaugeAnim) cancelAnimationFrame(gaugeAnim);
+    gaugeAnim = null;
+    gaugeShown = 0;
     num.textContent = '--';
     arc.setAttribute('stroke-dasharray', '0 100');
     needle.style.transform = 'rotate(0deg)';
     return;
   }
   const v = Math.max(0, Math.min(100, value));
-  num.textContent = String(Math.round(v));
+  animateGauge(v);
   arc.setAttribute('stroke-dasharray', `${v} 100`);
   arc.style.stroke = band(v).color;
   needle.style.transform = `rotate(${(v / 100) * 180}deg)`;
-  void verdict; // verdict set by caller
+}
+
+function componentDetail(name, data) {
+  if (name === 'ram') return `${data.userGB} GB  ·  requer ${data.requiredGB} GB`;
+  let text = `${data.userMatch}  ·  requer ${data.requiredMatch}`;
+  if (data.approx) text = `≈ ${text}`;
+  if (data.vram) {
+    text += `  ·  VRAM ${data.vram.userGB}/${data.vram.requiredGB} GB`;
+  }
+  return text;
 }
 
 function setComponent(name, data) {
@@ -57,6 +98,7 @@ function setComponent(name, data) {
   const scoreEl = row.querySelector('.comp-score');
   const fill = row.querySelector('.bar-fill');
   const detail = row.querySelector('.comp-detail');
+  detail.classList.remove('warn');
 
   if (!data || !data.identified) {
     row.classList.add('unidentified');
@@ -68,6 +110,7 @@ function setComponent(name, data) {
     else if (data && data.reason === 'user-unmatched') reason = 'seu componente fora da tabela';
     else if (data && data.reason === 'user-unknown') reason = 'sua spec desconhecida';
     detail.textContent = reason;
+    detail.title = (data && data.required) || '';
     return;
   }
   row.classList.remove('unidentified');
@@ -75,19 +118,41 @@ function setComponent(name, data) {
   scoreEl.textContent = String(s);
   fill.style.width = `${s}%`;
   fill.style.background = band(s).color;
-
-  if (name === 'ram') {
-    detail.textContent = `${data.userGB} GB  ·  requer ${data.requiredGB} GB`;
-  } else {
-    detail.textContent = `${data.userMatch}  ·  requer ${data.requiredMatch}`;
+  detail.textContent = componentDetail(name, data);
+  detail.title = data.required || '';
+  if (data.vramCapped) {
+    detail.classList.add('warn');
+    detail.title = `${detail.title}\nVRAM insuficiente — nota limitada pela memória de vídeo.`;
   }
 }
 
-function setSections({ game, toggle, gauge, components, message }) {
+function renderExtras(list) {
+  const wrap = $('#extras');
+  wrap.textContent = '';
+  if (!list || list.length === 0) {
+    show(wrap, false);
+    return;
+  }
+  for (const item of list) {
+    const el = document.createElement('span');
+    el.className = 'chip' + (item.ok === true ? ' ok' : item.ok === false ? ' bad' : '') + (item.soft ? ' soft' : '');
+    const mark = item.ok === true ? '✓' : item.ok === false ? '✗' : '·';
+    // "64 bits" is both the label and the requirement — don't print it twice
+    const what = item.required && item.required !== item.label ? ` ${item.required}` : '';
+    el.textContent = `${mark} ${item.label}${what}`;
+    el.title = item.user ? `você: ${item.user}` : 'não foi possível verificar';
+    wrap.appendChild(el);
+  }
+  show(wrap, true);
+}
+
+function setSections({ art, game, toggle, gauge, components, extras, message }) {
+  show($('#art'), art);
   show($('#game'), game);
   show($('#toggle'), toggle);
   show($('#gauge-wrap'), gauge);
   show($('#components'), components);
+  show($('#extras'), extras);
   show($('#message'), message);
   app.classList.toggle('state-only', !gauge && !components);
 }
@@ -115,56 +180,121 @@ function messageHtml(state) {
   return '';
 }
 
+// ---- settings ------------------------------------------------------------
+function syncSettings(prefs) {
+  if (!prefs) return;
+  $('#set-opacity').value = String(Math.round(prefs.opacity * 100));
+  $('#set-opacity-val').textContent = `${Math.round(prefs.opacity * 100)}%`;
+  $('#set-ontop').checked = prefs.alwaysOnTop;
+  $('#set-click').checked = prefs.clickThrough;
+  $('#set-compact').checked = prefs.compact;
+  $('#set-art').checked = prefs.showArtwork;
+  $('#set-autostart').checked = prefs.autoStart;
+  $('#set-reqtype').value = prefs.reqType;
+  app.classList.toggle('compact', !!prefs.compact);
+}
+
+function settingsHint(state) {
+  const parts = [];
+  parts.push(
+    state.shortcut
+      ? `Atalho global: ${state.shortcut.replace('CommandOrControl', 'Ctrl')}`
+      : 'Nenhum atalho global disponível — use o ícone da bandeja.'
+  );
+  if (state.settings && state.settings.clickThrough) {
+    parts.push('Com click-through ligado, desligue pelo menu da bandeja.');
+  }
+  parts.push(`v${state.version || '?'}`);
+  return parts.join('  ·  ');
+}
+
+function toggleSettings(on) {
+  settingsOpen = on;
+  app.classList.toggle('settings-open', on);
+  show($('#settings'), on);
+  $('#btn-settings').classList.toggle('on', on);
+  if (on && lastState) $('#set-hint').textContent = settingsHint(lastState);
+}
+
 // ---- main render ---------------------------------------------------------
 function render(state) {
   lastState = state;
   setMode(state);
 
+  if (state.settings) {
+    if (reqType === null) reqType = state.settings.reqType;
+    syncSettings(state.settings);
+  }
+  show($('#stale-badge'), !!state.stale);
+
   const msgEl = $('#message');
   const retryBtn = $('#btn-retry');
   show(retryBtn, false);
 
+  const blank = { art: false, game: false, toggle: false, gauge: false, components: false, extras: false };
+
+  if (settingsOpen) {
+    $('#set-hint').textContent = settingsHint(state);
+    setSections({ ...blank, message: false });
+    return;
+  }
+
   // 1. starting / specs not ready
   if (state.mode === 'starting' || !state.specs) {
-    setSections({ game: false, toggle: false, gauge: false, components: false, message: true });
+    setSections({ ...blank, message: true });
     msgEl.innerHTML = `<h4>INICIANDO</h4>Detectando specs da máquina…`;
     return;
   }
 
   // 2. environment states without a game
   if (state.mode === 'no-steam' || state.mode === 'setup') {
-    setSections({ game: false, toggle: false, gauge: false, components: false, message: true });
+    setSections({ ...blank, message: true });
     msgEl.innerHTML = messageHtml(state);
     return;
   }
 
   // 3. cdp / fallback, no game open
   if (!state.game) {
-    setSections({ game: false, toggle: false, gauge: false, components: false, message: true });
+    setSections({ ...blank, message: true });
     msgEl.innerHTML = `<div class="idle">aguardando jogo na Steam…</div>`;
     return;
   }
 
   // game present -> header
   $('#game-name').textContent = state.game.title || `App ${state.game.appid}`;
-  $('#game-sub').textContent = `APPID ${state.game.appid}` + (state.game.source === 'fallback' ? '  ·  fallback' : '');
+  const srcTag =
+    state.game.source === 'fallback'
+      ? '  ·  fallback'
+      : state.game.kind === 'library'
+        ? '  ·  biblioteca'
+        : '';
+  $('#game-sub').textContent = `APPID ${state.game.appid}${srcTag}`;
+
+  const hasArt = !!state.artwork;
+  if (hasArt) $('#art-img').src = state.artwork;
 
   // 4. loading requirements
   if (state.loadingReq) {
-    setSections({ game: true, toggle: false, gauge: false, components: false, message: true });
+    setSections({ ...blank, art: hasArt, game: true, message: true });
     msgEl.innerHTML = `<div class="idle">carregando requisitos…</div>`;
     return;
   }
 
   // 5. requirements error / unavailable
   if (state.requirementsError === 'network') {
-    setSections({ game: true, toggle: false, gauge: false, components: false, message: true });
-    msgEl.innerHTML = `<h4>SEM CONEXÃO</h4>Não deu para buscar a página da loja. Verifique a internet.`;
+    setSections({ ...blank, art: hasArt, game: true, message: true });
+    msgEl.innerHTML = `<h4>SEM CONEXÃO</h4>Não deu para consultar a Steam. Verifique a internet.`;
+    show(retryBtn, true);
+    return;
+  }
+  if (state.requirementsError === 'no-windows') {
+    setSections({ ...blank, art: hasArt, game: true, message: true });
+    msgEl.innerHTML = `<h4>SEM VERSÃO WINDOWS</h4>Este título não é distribuído para Windows.`;
     show(retryBtn, true);
     return;
   }
   if (state.requirementsError === 'unavailable' || !state.comparison) {
-    setSections({ game: true, toggle: false, gauge: false, components: false, message: true });
+    setSections({ ...blank, art: hasArt, game: true, message: true });
     msgEl.innerHTML = `<h4>REQUISITOS INDISPONÍVEIS</h4>Este jogo não expõe requisitos de PC (Windows) na loja.`;
     show(retryBtn, true);
     return;
@@ -185,15 +315,33 @@ function render(state) {
     b.style.opacity = cmp[t] ? '1' : '0.35';
   });
 
-  setSections({ game: true, toggle: true, gauge: true, components: true, message: false });
+  const extras = (state.extras && state.extras[type]) || [];
+  setSections({
+    art: hasArt,
+    game: true,
+    toggle: true,
+    gauge: true,
+    components: true,
+    extras: extras.length > 0,
+    message: false,
+  });
 
   setGauge(block.overall);
-  $('#verdict').textContent = block.verdict || '';
-  $('#verdict').style.color = block.overall == null ? 'var(--fg-dim)' : band(block.overall).color;
+  const verdictEl = $('#verdict');
+  verdictEl.textContent = block.verdict || '';
+  if (block.approx) {
+    const tag = document.createElement('span');
+    tag.className = 'approx-tag';
+    tag.textContent = 'ESTIMADO';
+    tag.title = 'algum componente foi inferido por família, não por medição direta';
+    verdictEl.appendChild(tag);
+  }
+  verdictEl.style.color = block.overall == null ? 'var(--fg-dim)' : band(block.overall).color;
 
   setComponent('gpu', block.components.gpu);
   setComponent('cpu', block.components.cpu);
   setComponent('ram', block.components.ram);
+  renderExtras(extras);
 }
 
 // ---- events --------------------------------------------------------------
@@ -201,6 +349,7 @@ document.querySelectorAll('.seg').forEach((btn) => {
   btn.addEventListener('click', () => {
     if (btn.disabled) return;
     reqType = btn.dataset.req;
+    window.api.setSettings({ reqType });
     if (lastState) render(lastState);
   });
 });
@@ -219,11 +368,36 @@ $('#message').addEventListener('click', async (e) => {
   }
 });
 
+$('#settings').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  if (btn.dataset.act === 'data') window.api.openDataFolder();
+  else if (btn.dataset.act === 'close') toggleSettings(false);
+});
+
+$('#set-opacity').addEventListener('input', (e) => {
+  const pct = Number(e.target.value);
+  $('#set-opacity-val').textContent = `${pct}%`;
+  window.api.setSettings({ opacity: pct / 100 });
+});
+$('#set-ontop').addEventListener('change', (e) => window.api.setSettings({ alwaysOnTop: e.target.checked }));
+$('#set-click').addEventListener('change', (e) => window.api.setSettings({ clickThrough: e.target.checked }));
+$('#set-compact').addEventListener('change', (e) => window.api.setSettings({ compact: e.target.checked }));
+$('#set-art').addEventListener('change', (e) => window.api.setSettings({ showArtwork: e.target.checked }));
+$('#set-autostart').addEventListener('change', (e) => window.api.setSettings({ autoStart: e.target.checked }));
+$('#set-reqtype').addEventListener('change', (e) => {
+  reqType = e.target.value;
+  window.api.setSettings({ reqType });
+  if (lastState) render(lastState);
+});
+
+$('#btn-settings').addEventListener('click', () => toggleSettings(!settingsOpen));
 $('#btn-retry').addEventListener('click', () => window.api.retry());
 $('#btn-hide').addEventListener('click', () => window.api.hide());
 $('#btn-quit').addEventListener('click', () => window.api.quit());
 
 window.api.onState((state) => render(state));
 
-// initial paint before first state arrives
+// initial paint before the first push, then reconcile with the real state
 render({ mode: 'starting', specs: null, game: null });
+window.api.getState().then((s) => s && render(s));

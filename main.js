@@ -1,17 +1,39 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, globalShortcut, screen, shell } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  globalShortcut,
+  screen,
+  shell,
+  Tray,
+  Menu,
+  nativeImage,
+} = require('electron');
 const path = require('path');
 
 const setup = require('./lib/steamSetup');
 const dbg = require('./lib/steamDebug');
-const scraper = require('./lib/steamScraper');
+const steamApi = require('./lib/steamApi');
 const { detectSpecs } = require('./lib/detectSpecs');
 const compareLib = require('./lib/compare');
+const extrasLib = require('./lib/extras');
 const fallback = require('./lib/windowFallback');
+const settings = require('./lib/settings');
+const cache = require('./lib/cache');
+const logger = require('./lib/logger');
+
+const log = logger.scoped('main');
+
+const WIN_W = 360;
+const WIN_H = 600;
+const WIN_H_COMPACT = 316;
 
 let win = null;
+let tray = null;
 let poller = null;
 let envTimer = null;
+let moveTimer = null;
 let tables = null;
 
 // CDP considered "lost" only after this many consecutive failed env checks,
@@ -27,12 +49,17 @@ const state = {
   steamPath: null,
   flagExists: false,
   specs: null,
-  game: null, // { appid, title, source }
+  game: null, // { appid, title, source, kind }
+  artwork: null, // data: URL of the store header image
   loadingReq: false,
   requirements: null, // { available, minimum, recommended }
-  requirementsError: null, // 'network' | 'unavailable' | null
+  requirementsError: null, // 'network' | 'unavailable' | 'no-windows' | null
   comparison: null, // { minimum, recommended }
+  extras: null, // { minimum: [...], recommended: [...] }
+  stale: false, // requirements served from cache after a failed fetch
   shortcut: null, // active global show/hide accelerator, or null if none registered
+  settings: null,
+  version: app.getVersion(),
   updatedAt: 0,
 };
 
@@ -44,15 +71,40 @@ function pushState() {
 // ---- game handling -------------------------------------------------------
 let currentKey = null; // `${source}:${appid}` to dedupe redundant work
 
+function clearGameState() {
+  currentKey = null;
+  state.game = null;
+  state.artwork = null;
+  state.requirements = null;
+  state.requirementsError = null;
+  state.comparison = null;
+  state.extras = null;
+  state.stale = false;
+  state.loadingReq = false;
+}
+
+function buildComparison(info, specs) {
+  const comparison = compareLib.compare(specs, info, tables);
+  const extras = {
+    minimum: info.minimum ? extrasLib.buildExtras(info.minimum, specs) : [],
+    recommended: info.recommended ? extrasLib.buildExtras(info.recommended, specs) : [],
+  };
+  return { comparison, extras };
+}
+
+async function loadArtwork(key, url) {
+  if (!url || !settings.get('showArtwork')) return;
+  const dataUrl = await steamApi.getArtwork(url);
+  if (dataUrl && currentKey === key) {
+    state.artwork = dataUrl;
+    pushState();
+  }
+}
+
 async function handleGame(game, source) {
   if (!game) {
     if (currentKey !== null) {
-      currentKey = null;
-      state.game = null;
-      state.requirements = null;
-      state.requirementsError = null;
-      state.comparison = null;
-      state.loadingReq = false;
+      clearGameState();
       pushState();
     }
     return;
@@ -61,31 +113,42 @@ async function handleGame(game, source) {
   if (key === currentKey) return; // already handling/handled this game (retry clears currentKey)
   currentKey = key;
 
-  state.game = { appid: game.appid, title: game.title || null, source };
+  state.game = { appid: game.appid, title: game.title || null, source, kind: game.kind || null };
+  state.artwork = null;
   state.loadingReq = true;
   state.requirements = null;
   state.requirementsError = null;
   state.comparison = null;
+  state.extras = null;
+  state.stale = false;
   pushState();
 
   try {
-    const req = await scraper.getRequirements(game.appid);
+    const info = await steamApi.getGameInfo(game.appid);
     // guard against a newer game having been selected while we awaited
     if (currentKey !== key) return;
     // specs may still be detecting if a game resolved first — wait for them
     // (cached, so this is instant once detected) so compare never sees null
     if (!state.specs) state.specs = await detectSpecs();
     if (currentKey !== key) return;
-    state.requirements = req;
-    if (req.available) {
-      state.comparison = compareLib.compare(state.specs, req, tables);
+
+    if (info.name) state.game.title = info.name;
+    state.requirements = info;
+    state.stale = !!info.stale;
+    loadArtwork(key, info.headerImage);
+
+    if (info.available) {
+      const built = buildComparison(info, state.specs);
+      state.comparison = built.comparison;
+      state.extras = built.extras;
       state.requirementsError = null;
     } else {
       state.comparison = null;
-      state.requirementsError = 'unavailable';
+      state.requirementsError = info.windows === false ? 'no-windows' : 'unavailable';
     }
   } catch (e) {
     if (currentKey !== key) return;
+    log.warn('requirements lookup failed for', String(game.appid), e);
     state.requirements = null;
     state.comparison = null;
     state.requirementsError = 'network';
@@ -100,28 +163,23 @@ async function handleGame(game, source) {
 // ---- environment / mode loop --------------------------------------------
 async function envTick() {
   try {
-    const [running, flag] = await Promise.all([setup.isSteamRunning(), setup.debugFlagStatus()]);
-    state.steamRunning = running;
-    state.steamPath = flag.steamPath;
-    state.flagExists = flag.flagExists;
-
     if (cdpConnected) {
+      // CDP owns detection and needs no process probing at all. Skipping the
+      // registry + tasklist calls here is what keeps the overlay idle-cheap.
       cdpMissTicks = 0;
-    } else {
-      cdpMissTicks++;
-    }
-    const cdpDown = !cdpConnected && cdpMissTicks >= CDP_GRACE_TICKS;
-
-    if (cdpConnected) {
-      // CDP owns detection; onGame drives game state. Mode reflects it.
       if (state.mode !== 'cdp') {
         state.mode = 'cdp';
         pushState();
       }
       return;
     }
+    cdpMissTicks++;
 
-    // CDP not connected -> decide mode + try fallback
+    const [running, flag] = await Promise.all([setup.isSteamRunning(), setup.debugFlagStatus()]);
+    state.steamRunning = running;
+    state.steamPath = flag.steamPath;
+    state.flagExists = flag.flagExists;
+
     if (!running) {
       setNoGameMode('no-steam');
       return;
@@ -132,56 +190,101 @@ async function envTick() {
     }
     // flag present but CDP still down: likely Steam needs a restart. Try fallback
     // to remain useful in the meantime.
-    if (cdpDown) {
+    if (cdpMissTicks >= CDP_GRACE_TICKS) {
       const guess = await fallback.getFallbackGame();
       if (cdpConnected) return; // CDP reconnected during the await; let it own detection
       if (guess) {
-        if (state.mode !== 'fallback') {
-          state.mode = 'fallback';
-        }
+        state.mode = 'fallback';
         await handleGame(guess, 'fallback');
         return;
       }
       setNoGameMode('setup'); // flag there, no CDP, no fallback hit -> ask to restart Steam
     }
-  } catch {
-    /* ignore transient errors */
+  } catch (e) {
+    log.debug('env tick failed', e);
   }
 }
 
 function setNoGameMode(mode) {
   const changed = state.mode !== mode || state.game !== null;
   state.mode = mode;
-  if (state.game !== null || currentKey !== null) {
-    currentKey = null;
-    state.game = null;
-    state.requirements = null;
-    state.comparison = null;
-    state.requirementsError = null;
-    state.loadingReq = false;
-  }
+  if (state.game !== null || currentKey !== null) clearGameState();
   if (changed) pushState();
 }
 
 // ---- window --------------------------------------------------------------
-function createWindow() {
-  const primary = screen.getPrimaryDisplay();
-  const wa = primary.workArea;
-  const W = 360;
-  const H = 520;
+// Keep the overlay inside a display that actually exists: a saved position from
+// a monitor that has since been unplugged would put it out of reach.
+function resolvePosition(prefs, height) {
+  const fallbackPos = () => {
+    const wa = screen.getPrimaryDisplay().workArea;
+    return { x: wa.x + wa.width - WIN_W - 24, y: wa.y + 24 };
+  };
+  if (prefs.x == null || prefs.y == null) return fallbackPos();
+  const display = screen.getDisplayNearestPoint({ x: prefs.x, y: prefs.y });
+  if (!display) return fallbackPos();
+  const wa = display.workArea;
+  const visible =
+    prefs.x + WIN_W > wa.x + 40 &&
+    prefs.x < wa.x + wa.width - 40 &&
+    prefs.y + height > wa.y + 20 &&
+    prefs.y < wa.y + wa.height - 20;
+  return visible ? { x: prefs.x, y: prefs.y } : fallbackPos();
+}
+
+function applyWindowPrefs(prefs) {
+  if (!win || win.isDestroyed()) return;
+  win.setOpacity(prefs.opacity);
+  win.setAlwaysOnTop(prefs.alwaysOnTop, 'screen-saver');
+  win.setIgnoreMouseEvents(prefs.clickThrough, { forward: true });
+  const h = prefs.compact ? WIN_H_COMPACT : WIN_H;
+  const [, curH] = win.getSize();
+  if (curH === h) return;
+  // A non-resizable window pins its size through WM_GETMINMAXINFO on Windows,
+  // so setSize alone silently does nothing here — compact mode would hide the
+  // content and leave the empty frame behind. Lift the flag for the call only.
+  const resizable = win.isResizable();
+  if (!resizable) win.setResizable(true);
+  win.setSize(WIN_W, h, false);
+  if (!resizable) win.setResizable(false);
+}
+
+function persistPosition() {
+  if (!win || win.isDestroyed()) return;
+  if (moveTimer) clearTimeout(moveTimer);
+  moveTimer = setTimeout(() => {
+    moveTimer = null;
+    if (!win || win.isDestroyed()) return;
+    const [x, y] = win.getPosition();
+    settings.patch({ x, y });
+  }, 500);
+}
+
+function iconPath(name) {
+  return path.join(__dirname, 'assets', name);
+}
+
+function createWindow(prefs) {
+  const height = prefs.compact ? WIN_H_COMPACT : WIN_H;
+  const pos = resolvePosition(prefs, height);
   win = new BrowserWindow({
-    width: W,
-    height: H,
-    x: wa.x + wa.width - W - 24,
-    y: wa.y + 24,
+    width: WIN_W,
+    height,
+    x: pos.x,
+    y: pos.y,
+    minWidth: WIN_W,
+    maxWidth: WIN_W,
+    minHeight: WIN_H_COMPACT,
+    maxHeight: WIN_H,
     frame: false,
     transparent: true,
     resizable: false,
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: false,
-    alwaysOnTop: true,
+    alwaysOnTop: prefs.alwaysOnTop,
     show: false,
+    icon: iconPath('icon.png'),
     backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -189,18 +292,113 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.loadFile('index.html');
-  win.once('ready-to-show', () => win.show());
+  win.loadFile(path.join(__dirname, 'index.html'));
+  win.once('ready-to-show', () => {
+    applyWindowPrefs(settings.all());
+    win.show();
+  });
+  win.on('moved', persistPosition);
+  win.on('closed', () => {
+    win = null;
+  });
+}
+
+// ---- tray ----------------------------------------------------------------
+// The tray is the recovery path: if click-through is on and no global shortcut
+// could be registered, this menu is the only way back to a usable window.
+function buildTrayMenu() {
+  const prefs = settings.all();
+  return Menu.buildFromTemplate([
+    {
+      label: win && win.isVisible() ? 'Esconder overlay' : 'Mostrar overlay',
+      click: toggleWindow,
+    },
+    { type: 'separator' },
+    {
+      label: 'Sempre no topo',
+      type: 'checkbox',
+      checked: prefs.alwaysOnTop,
+      click: (item) => updateSettings({ alwaysOnTop: item.checked }),
+    },
+    {
+      label: 'Modo click-through',
+      type: 'checkbox',
+      checked: prefs.clickThrough,
+      click: (item) => updateSettings({ clickThrough: item.checked }),
+    },
+    {
+      label: 'Iniciar com o Windows',
+      type: 'checkbox',
+      checked: prefs.autoStart,
+      click: (item) => updateSettings({ autoStart: item.checked }),
+    },
+    { type: 'separator' },
+    { label: 'Abrir pasta de dados', click: () => shell.openPath(path.dirname(logger.logPath())) },
+    { label: `Versão ${app.getVersion()}`, enabled: false },
+    { type: 'separator' },
+    { label: 'Sair', click: () => app.quit() },
+  ]);
+}
+
+function refreshTray() {
+  if (!tray || tray.isDestroyed()) return;
+  tray.setContextMenu(buildTrayMenu());
+}
+
+function createTray() {
+  try {
+    const img = nativeImage.createFromPath(iconPath('tray.png'));
+    tray = new Tray(img.isEmpty() ? nativeImage.createEmpty() : img);
+    tray.setToolTip('Steam Spec Overlay');
+    tray.on('click', toggleWindow);
+    refreshTray();
+  } catch (e) {
+    log.warn('tray unavailable', e);
+  }
+}
+
+// ---- settings ------------------------------------------------------------
+function applyAutoStart(enabled) {
+  try {
+    app.setLoginItemSettings({ openAtLogin: enabled, args: ['--hidden'] });
+  } catch (e) {
+    log.warn('could not set login item', e);
+  }
+}
+
+function updateSettings(changes) {
+  const changed = settings.patch(changes);
+  if (Object.keys(changed).length === 0) return settings.all();
+  const prefs = settings.all();
+  if ('logLevel' in changed) logger.setLevel(prefs.logLevel);
+  if ('autoStart' in changed) applyAutoStart(prefs.autoStart);
+  if (
+    'opacity' in changed ||
+    'alwaysOnTop' in changed ||
+    'clickThrough' in changed ||
+    'compact' in changed
+  ) {
+    applyWindowPrefs(prefs);
+  }
+  state.settings = prefs;
+  refreshTray();
+  pushState();
+  return prefs;
 }
 
 // ---- startup -------------------------------------------------------------
 async function bootstrap() {
-  tables = compareLib.loadTables();
-  createWindow();
+  const prefs = settings.all();
+  logger.setLevel(prefs.logLevel);
+  state.settings = prefs;
+  log.info('starting', app.getVersion());
 
-  // detect specs once (async, off render thread)
+  tables = compareLib.loadTables();
+  createWindow(prefs);
+  createTray();
+
+  // detect specs (disk-cached, so usually resolves before the first paint)
   detectSpecs().then((specs) => {
     state.specs = specs;
     pushState();
@@ -220,9 +418,7 @@ async function bootstrap() {
     onStatus: ({ connected, port }) => {
       cdpConnected = connected;
       state.cdpPort = port;
-      if (connected) {
-        cdpMissTicks = 0;
-      }
+      if (connected) cdpMissTicks = 0;
     },
   });
   poller.start();
@@ -232,6 +428,8 @@ async function bootstrap() {
 }
 
 // ---- IPC -----------------------------------------------------------------
+ipcMain.handle('getState', () => state);
+
 ipcMain.handle('enableDebug', async () => {
   const res = await setup.ensureDebugFlag({ create: true });
   state.flagExists = res.flagExists;
@@ -241,20 +439,30 @@ ipcMain.handle('enableDebug', async () => {
 });
 
 ipcMain.handle('retry', async () => {
-  if (state.game) {
-    scraper._clearCache();
-    currentKey = null;
-    await handleGame({ appid: state.game.appid, title: state.game.title }, state.game.source || 'cdp');
+  if (!state.game) return false;
+  const { appid, title, source } = state.game;
+  currentKey = null;
+  try {
+    // force a refetch, bypassing the disk cache for this appid
+    await steamApi.getGameInfo(appid, { force: true });
+  } catch (e) {
+    log.debug('forced refetch failed; handleGame will report it', e);
   }
+  await handleGame({ appid, title }, source || 'cdp');
   return true;
 });
+
+ipcMain.handle('setSettings', (_e, changes) => updateSettings(changes || {}));
 
 ipcMain.on('openSteamFolder', () => {
   if (state.steamPath) shell.openPath(state.steamPath);
 });
 
+ipcMain.on('openDataFolder', () => shell.openPath(path.dirname(logger.logPath())));
+
 ipcMain.on('hide', () => {
   if (win) win.hide();
+  refreshTray();
 });
 
 ipcMain.on('quit', () => app.quit());
@@ -269,6 +477,7 @@ function toggleWindow() {
     win.show();
     win.focus();
   }
+  refreshTray();
 }
 
 // Register the first accelerator that the OS grants. register() returns false
@@ -279,13 +488,14 @@ function registerShortcut() {
     try {
       if (globalShortcut.register(acc, toggleWindow)) {
         state.shortcut = acc;
+        pushState();
         return;
       }
     } catch {
       /* try next */
     }
   }
-  state.shortcut = null; // none available — relaunch (single-instance) still re-shows
+  state.shortcut = null; // none available — tray menu and relaunch still re-show
   pushState();
 }
 
@@ -299,6 +509,7 @@ if (!gotLock) {
     if (win && !win.isDestroyed()) {
       win.show();
       win.focus();
+      refreshTray();
     }
   });
   app.whenReady().then(() => {
@@ -311,6 +522,9 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (poller) poller.stop();
   if (envTimer) clearInterval(envTimer);
+  if (moveTimer) clearTimeout(moveTimer);
+  settings.flush();
+  cache.flush();
 });
 
 app.on('window-all-closed', () => {

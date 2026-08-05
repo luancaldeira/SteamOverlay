@@ -10,18 +10,21 @@
     <div id="app">
       <header id="titlebar">
         <div class="tb-left">
-          <span class="tb-title">STEAM SPEC OVERLAY</span>
+          <span class="tb-title">SPEC OVERLAY</span>
           <span id="mode" class="mode" title="modo de detecção">
             <span class="mode-dot"></span><span id="mode-text">…</span>
           </span>
         </div>
         <div class="tb-btns">
-          <button id="btn-hide" class="tb-btn" title="Esconder (Ctrl+Shift+S)">–</button>
+          <button id="btn-settings" class="tb-btn" title="Configurações">⚙</button>
+          <button id="btn-hide" class="tb-btn" title="Esconder">–</button>
           <button id="btn-quit" class="tb-btn" title="Sair">×</button>
         </div>
       </header>
 
       <main id="body">
+        <section id="art" class="art" hidden><img id="art-img" alt="" /></section>
+
         <section id="game">
           <div id="game-name" class="game-name">—</div>
           <div id="game-sub" class="game-sub"></div>
@@ -63,11 +66,40 @@
           </div>
         </section>
 
+        <section id="extras" class="extras" hidden></section>
+
         <section id="message" class="message" hidden></section>
+
+        <section id="settings" class="settings" hidden>
+          <h4>CONFIGURAÇÕES</h4>
+          <label class="row">
+            <span>Opacidade</span>
+            <input id="set-opacity" type="range" min="35" max="100" step="5" />
+            <output id="set-opacity-val">100%</output>
+          </label>
+          <label class="row check"><input id="set-ontop" type="checkbox" /><span>Sempre no topo</span></label>
+          <label class="row check"><input id="set-click" type="checkbox" /><span>Click-through (ignora o mouse)</span></label>
+          <label class="row check"><input id="set-compact" type="checkbox" /><span>Modo compacto</span></label>
+          <label class="row check"><input id="set-art" type="checkbox" /><span>Mostrar arte do jogo</span></label>
+          <label class="row check"><input id="set-autostart" type="checkbox" /><span>Iniciar com o Windows</span></label>
+          <label class="row">
+            <span>Abrir em</span>
+            <select id="set-reqtype">
+              <option value="recommended">Recomendado</option>
+              <option value="minimum">Mínimo</option>
+            </select>
+          </label>
+          <div class="set-actions">
+            <button class="msg-btn ghost" data-act="data">Abrir pasta de dados</button>
+            <button class="msg-btn" data-act="close">Fechar</button>
+          </div>
+          <div id="set-hint" class="set-hint"></div>
+        </section>
       </main>
 
       <footer id="foot">
         <span class="foot-note">estimativa — não é medida exata</span>
+        <span id="stale-badge" class="stale-badge" hidden title="sem rede: dados do cache">CACHE</span>
         <button id="btn-retry" class="foot-btn" hidden>retry</button>
       </footer>
     </div>

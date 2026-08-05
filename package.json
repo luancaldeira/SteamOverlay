@@ -1,6 +1,6 @@
 {
   "name": "steam-spec-overlay",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Overlay desktop que detecta o jogo aberto no app da Steam e mostra compatibilidade com o PC em tempo real (Windows).",
   "main": "main.js",
   "author": "",
@@ -8,6 +8,10 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
+    "icons": "node scripts/make-icon.js",
+    "selfcheck": "node scripts/selfcheck.js",
+    "verify": "node scripts/validate-tables.js && node scripts/selfcheck.js && node --test",
+    "predist": "node scripts/make-icon.js",
     "dist": "electron-builder --win nsis portable",
     "pack": "electron-builder --dir"
   },
@@ -29,9 +33,11 @@
       "styles.css",
       "renderer.js",
       "lib/**/*",
-      "data/**/*"
+      "data/**/*",
+      "assets/**/*"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         { "target": "nsis", "arch": ["x64"] },
         { "target": "portable", "arch": ["x64"] }
@@ -40,7 +46,10 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "perMachine": false
+      "perMachine": false,
+      "shortcutName": "Steam Spec Overlay",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
     }
   }
 }

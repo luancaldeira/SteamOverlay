@@ -1,47 +1,87 @@
+<div align="center">
+
 # Steam Spec Overlay
 
-Overlay de desktop que **detecta automaticamente** qual página de jogo está aberta no
-**app desktop da Steam**, lê os requisitos mínimos/recomendados, compara com as specs
-reais do seu PC e mostra a compatibilidade em porcentagem — em tempo real, por cima da
-janela da Steam. Sem digitar ou colar nada.
+**Abra a página de um jogo na Steam. O overlay diz, em segundos, se o seu PC roda.**
 
-![status](https://img.shields.io/badge/plataforma-Windows-blue) ![status](https://img.shields.io/badge/steam-app%20desktop-informational)
+Sem digitar nada, sem colar nada, sem procurar os requisitos.
 
-> ⚠️ **Suporte: só Windows + app desktop da Steam.** Não funciona com a Steam no
-> navegador, nem no macOS/Linux. Não é um overlay dentro do jogo — é sobre a janela da
-> **loja** da Steam.
+[![plataforma](https://img.shields.io/badge/plataforma-Windows-0078D4)](#)
+[![steam](https://img.shields.io/badge/steam-app%20desktop-171a21)](#)
+[![versão](https://img.shields.io/badge/vers%C3%A3o-1.0.0-35d07f)](../../releases/latest)
+[![testes](https://img.shields.io/badge/testes-106%20passando-35d07f)](#qualidade)
+[![licença](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
+
+<img src="docs/shot-recomendado.png" width="330" alt="Overlay mostrando 60% de compatibilidade para Cyberpunk 2077 no perfil recomendado">
+
+</div>
+
+---
+
+## O que é
+
+Um overlay de desktop que fica por cima da janela da Steam. Ele **detecta sozinho** qual
+jogo você está olhando, lê os requisitos mínimos e recomendados, compara com o hardware
+real da sua máquina e mostra a compatibilidade em porcentagem — atualizando na hora em que
+você troca de jogo.
+
+> ⚠️ **Só Windows + app desktop da Steam.** Não funciona com a Steam no navegador, nem no
+> macOS/Linux. E não é um overlay dentro do jogo — é sobre a janela da **loja**.
 
 ---
 
 ## Como funciona
 
 O cliente desktop da Steam é uma aplicação Chromium (CEF) que pode expor um endpoint de
-*remote debugging* (protocolo Chrome DevTools). O app lê esse endpoint para descobrir
-qual página `store.steampowered.com/app/<APPID>` está aberta — **sem OCR, sem ler
-pixels, sem scraping da janela nativa**. A partir do APPID ele busca os requisitos na
-loja, lê as specs da máquina e calcula a compatibilidade.
+*remote debugging*. O overlay lê esse endpoint para descobrir qual página está aberta —
+**sem OCR, sem ler pixels, sem scraping da janela nativa**.
 
-Se o debug do CEF não estiver disponível, cai para um **modo fallback** que lê o título
-da janela em foco da Steam (menos confiável). O indicador de modo no topo mostra qual
-está ativo: `CDP` (verde) ou `FALLBACK` (âmbar).
+```mermaid
+flowchart LR
+  A["Steam desktop<br/>(CEF remote debugging)"] -->|"/json"| B["steamDebug<br/>extrai o APPID"]
+  B --> C{"fonte dos<br/>requisitos"}
+  C -->|"API appdetails"| D["requisitos<br/>+ nome + arte"]
+  C -->|"fallback:<br/>página da loja"| D
+  E["detectSpecs<br/>seu hardware"] --> F
+  D --> F["compare<br/>GPU · CPU · RAM"]
+  F --> G["% + veredito<br/>+ selos"]
+```
+
+Dois tipos de página são reconhecidos:
+
+| Página | Como é detectada |
+|---|---|
+| **Loja** | target CDP com URL `store.steampowered.com/app/<APPID>` — funciona até por trás do *age gate* |
+| **Biblioteca** | o cliente cria um documento interno cuja URL carrega a rota `/library/app/<APPID>` |
+
+Os requisitos vêm da **API oficial** `appdetails` da Steam (JSON de ~5 KB, que ainda traz o
+nome canônico e a arte do jogo). Se a API não conhecer o appid, cai para o scraping da
+página da loja. Se o debug do CEF estiver desligado, existe um **modo fallback** que lê o
+título da janela da Steam. O indicador no topo mostra qual está ativo: `CDP` (verde) ou
+`FALLBACK` (âmbar).
+
+Tudo é cacheado em disco: o segundo start é instantâneo e uma página que você já abriu
+continua funcionando **sem internet**.
 
 ---
 
 ## Instalação
 
-### Usuário final
+**Usuário final** — baixe em [Releases](../../releases/latest):
 
-1. Baixe e rode o instalador `Steam Spec Overlay Setup x.y.z.exe` (ou a versão
-   *portable*) da pasta `dist/`.
-2. Abra o app. Na primeira vez ele vai pedir para **ativar a detecção automática**
-   (passo do flag de debug abaixo).
+- `Steam Spec Overlay Setup 1.0.0.exe` — instalador (cria atalho, permite escolher a pasta)
+- `Steam Spec Overlay 1.0.0.exe` — versão portable, roda sem instalar
 
-### Desenvolvimento
+> O executável não é assinado (certificado de code signing é pago), então o Windows pode
+> mostrar um aviso do SmartScreen na primeira execução. **Mais informações → Executar
+> assim mesmo.**
+
+**Desenvolvimento:**
 
 ```bash
 npm install
 npm start          # roda o overlay
-npm test           # roda os testes da lógica de comparação
+npm run verify     # tabelas + self-check + 106 testes
 npm run dist       # gera instalador NSIS + portable em dist/
 ```
 
@@ -49,57 +89,140 @@ Requer Node.js 18+ (testado no Node 24) e Windows.
 
 ---
 
-## Passo obrigatório: ativar o debug do CEF da Steam
+## Passo obrigatório: ligar o debug do CEF
 
-A Steam só abre a porta de debug se existir um arquivo-flag vazio chamado
-`.cef-enable-remote-debugging` na raiz da pasta de instalação
+A Steam só abre a porta de debug se existir um arquivo vazio chamado
+`.cef-enable-remote-debugging` na raiz da pasta de instalação dela
 (ex.: `C:\Program Files (x86)\Steam\.cef-enable-remote-debugging`).
 
-O app faz isso pra você:
+**O app faz isso pra você:**
 
-1. Ao abrir sem detecção ativa, clique em **“Ativar debug”** no overlay. Ele encontra a
-   pasta da Steam (pelo registro do Windows) e cria o arquivo.
-2. **Feche a Steam completamente** (inclusive o ícone na bandeja do sistema) e abra de
-   novo.
-3. Pronto — o indicador muda para `CDP` e o overlay passa a detectar os jogos sozinho.
+1. Abra o overlay. Sem detecção ativa, ele mostra o botão **“Ativar debug”** — clique. Ele
+   acha a pasta da Steam pelo registro do Windows e cria o arquivo.
+2. **Feche a Steam por completo** (inclusive o ícone na bandeja) e abra de novo.
+3. O indicador vira `CDP` e o overlay passa a detectar os jogos sozinho.
 
-> Se a criação do arquivo falhar por permissão, crie manualmente um arquivo vazio com
-> esse nome na pasta da Steam e reinicie a Steam.
+> Se a criação falhar por permissão, crie manualmente um arquivo vazio com esse nome na
+> pasta da Steam e reinicie a Steam.
 
 ---
 
 ## Uso
 
-- Abra a página de um jogo na loja da Steam. Em poucos segundos o overlay mostra o
-  jogo, um medidor de compatibilidade em % e a quebra por **GPU / CPU / RAM**.
-- Alterne entre **Recomendado** e **Mínimo** no topo.
-- Trocar de jogo atualiza o overlay automaticamente. Sair da página deixa o overlay em
-  estado de espera.
-- Atalho global **`Ctrl+Shift+S`** para mostrar/esconder o overlay. Se esse combo
-  já estiver em uso por outro app, o overlay tenta `Ctrl+Alt+S` e depois
-  `Ctrl+Shift+F10`. Mesmo que nenhum atalho fique disponível, **abrir o app de novo**
-  traz a janela de volta (instância única).
-- Arraste pela barra de título para reposicionar.
+<table>
+<tr>
+<td width="50%" valign="top" align="center">
+<img src="docs/shot-recomendado.png" alt="Perfil recomendado, 60%">
+<b>Recomendado</b><br><sub>60% — “no limite, espere quedas”</sub>
+</td>
+<td width="50%" valign="top" align="center">
+<img src="docs/shot-minimo.png" alt="Perfil mínimo, 99%">
+<b>Mínimo</b><br><sub>99% — “roda tranquilo”</sub>
+</td>
+</tr>
+</table>
+
+- Abra a página de um jogo na loja ou na sua biblioteca. Em segundos aparecem a arte, o
+  nome, o medidor em % e a quebra por **GPU / CPU / RAM**, mais os selos de
+  **SO / DirectX / disco / 64 bits**.
+- Alterne entre **Recomendado** e **Mínimo** no topo — a escolha fica salva.
+- Trocar de jogo atualiza sozinho. Sair da página deixa o overlay em espera.
+- Atalho global **`Ctrl+Shift+S`** para mostrar/esconder. Se o combo estiver ocupado, ele
+  tenta `Ctrl+Alt+S` e depois `Ctrl+Shift+F10`; o atalho ativo aparece nas configurações.
+- **Ícone na bandeja** com mostrar/esconder, sempre-no-topo, click-through, iniciar com o
+  Windows e sair. É também a rota de recuperação se nenhum atalho global estiver livre.
+- Arraste pela barra de título para reposicionar — a posição é lembrada.
+
+<table>
+<tr>
+<td width="50%" valign="top" align="center">
+<img src="docs/shot-config.png" alt="Painel de configurações">
+<b>Configurações</b><br><sub>opacidade, click-through, autostart…</sub>
+</td>
+<td width="50%" valign="top" align="center">
+<img src="docs/shot-compacto.png" alt="Modo compacto">
+<b>Modo compacto</b><br><sub>só o medidor, ocupa 316px</sub>
+</td>
+</tr>
+</table>
+
+Configurações, cache e log ficam em `%APPDATA%\steam-spec-overlay\` — o botão **Abrir
+pasta de dados** leva direto lá.
+
+<sub>As capturas usam um PC de referência (i5-12400F · RTX 3060 · 16 GB); o app mostra o
+hardware real da sua máquina.</sub>
 
 ---
 
-## Limitações e avisos
+## Como a porcentagem é calculada
 
-- **A % é uma estimativa, não uma medida exata.** Requisitos da loja são texto livre e
-  imprecisos (“or better”, “equivalent”). Use como referência de ordem de grandeza.
-- A **tabela de benchmark é interna e estimada** (`data/cpu-benchmarks.json` e
-  `data/gpu-benchmarks.json`). Se sua CPU/GPU aparecer como “não identificado”, ela não
-  está na tabela — é só adicionar a entrada (chave em minúsculas → pontuação relativa).
-  O componente não identificado é **excluído** do cálculo, nunca chutado.
-- **Requisitos de CPU ambíguos** (ex.: “4 hardware CPU threads”, “Dual core 2.8 GHz”,
-  “Quad-core from Intel or AMD”) são tratados: quando não há um modelo reconhecível, o
-  app compara diretamente o número de núcleos/threads/clock reais do seu processador
-  contra o que o requisito pede. O matching de modelos também é insensível a hífen
-  (“i5 750” = “i5-750”).
-- A detecção depende do comportamento do cliente Steam (flag de debug, porta CDP). A
-  Valve pode mudar isso em versões futuras; por isso existe o modo fallback.
+1. Cada campo do requisito é comparado contra a spec real da máquina.
+2. **GPU e CPU** viram uma razão `pontuação sua / pontuação exigida` usando as tabelas
+   internas de benchmark, e essa razão passa por uma curva: empatar com o requisito vale
+   **70**; ter 1,4× ou mais vale **100**.
+3. **RAM** usa a mesma curva sobre GB.
+4. As notas entram com pesos **GPU 45% · CPU 35% · RAM 20%**, renormalizados **apenas
+   sobre os componentes identificados** — um componente desconhecido é excluído da conta,
+   nunca chutado.
+
+As regras que mais mudam o resultado na prática:
+
+| Regra | Exemplo |
+|---|---|
+| **“ou” significa o mais fraco** | `GTX 1060 ou RX 580 ou Arc A380` é atendido por qualquer uma → a régua é a Arc A380 |
+| **Cláusula de exclusão é descartada** | `RX 580 (Intel UHD 630 não suportada)` não deixa a UHD virar o requisito |
+| **VRAM é um portão à parte** | placa mais rápida, mas com menos VRAM do que o jogo pede, tem a nota limitada por isso |
+| **Requisito genérico de CPU** | `4 hardware CPU threads`, `Dual core 2.8 GHz` viram comparação direta de núcleos/threads/clock |
+| **Modelo fora da tabela é estimado** | interpolado entre os vizinhos da mesma família e geração, marcado com `≈` e o selo `ESTIMADO` — nunca apresentado como medição |
+| **Nomes colados são entendidos** | `GTX1060`, `HD2600`, `9600GT`, `RX6600XT` |
+
+---
+
+## Limitações
+
+- **A % é uma estimativa, não uma medida.** Requisito de loja é texto livre e impreciso
+  (“or better”, “equivalent”). Use como ordem de grandeza.
+- As tabelas de benchmark são **internas e estimadas**: 349 GPUs e 388 CPUs. Se o seu
+  componente aparecer como “não identificado”, ele não está na tabela nem foi estimável —
+  basta acrescentar a linha (chave minúscula → pontuação relativa) e rodar
+  `npm run verify`.
+- O selo de **DirectX** reflete o que o seu Windows expõe; o nível real também depende do
+  *feature level* da GPU. Por isso é informativo e fica fora do cálculo.
+- A detecção depende do comportamento do cliente Steam (flag de debug, porta CDP). A Valve
+  pode mudar isso; por isso existe o modo fallback.
 - Jogos só-console ou sem bloco de requisitos de PC aparecem como
   **“requisitos indisponíveis”**.
+
+---
+
+## Qualidade
+
+```bash
+npm run verify
+```
+
+Roda três gates em sequência:
+
+| Gate | O que checa |
+|---|---|
+| `scripts/validate-tables.js` | duplicatas, chaves inalcançáveis pelo matcher, monotonicidade dentro de cada família/geração e âncoras de ordenação |
+| `scripts/selfcheck.js` | smoke test ponta a ponta sem rede e sem Electron — inclusive se todo `window.api.*` usado pelo renderer existe no preload **e** tem handler no main |
+| `node --test` | 106 testes unitários |
+
+---
+
+## Voltando para uma versão anterior
+
+O histórico deste repositório guarda as duas versões como tags:
+
+```bash
+git checkout v0.1.0    # versão original
+git checkout v1.0.0    # versão atual
+git checkout main      # volta para o topo
+```
+
+Para rodar a versão antiga: `git checkout v0.1.0 && npm install && npm start`.
+O que mudou entre elas está no [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -107,22 +230,41 @@ O app faz isso pra você:
 
 ```
 steam-spec-overlay/
-  main.js                 processo Electron: janela + orquestração + IPC
+  main.js                 processo Electron: janela + bandeja + orquestração + IPC
   preload.js              ponte segura main↔renderer (contextIsolation)
-  index.html / styles.css / renderer.js   UI do overlay (HUD)
+  index.html
+  styles.css
+  renderer.js             UI do overlay (HUD)
   lib/
-    steamDebug.js         acha porta CDP, lê /json, extrai appid, faz polling
+    steamDebug.js         acha a porta CDP, lê /json, extrai o appid (loja + biblioteca)
     steamSetup.js         acha a pasta da Steam (registro), cria o flag de debug
-    steamScraper.js       busca+parseia requisitos por appid (com cache)
-    detectSpecs.js        specs reais da máquina (systeminformation)
-    compare.js            matching CPU/GPU + cálculo da %
-    windowFallback.js     plano B via título de janela (Win32)
+    steamApi.js           API appdetails + fallback de página + cache + arte
+    steamScraper.js       parsing dos blocos de requisito (fragmento e página)
+    detectSpecs.js        specs reais da máquina (systeminformation), com cache
+    compare.js            matching CPU/GPU, semântica de "ou", estimador, cálculo da %
+    extras.js             SO / DirectX / disco / 64 bits
+    windowFallback.js     plano B via título de janela (tasklist)
+    settings.js           preferências persistentes e validadas
+    cache.js              cache em disco com TTL e leitura stale
+    logger.js             log rotativo em arquivo
+    jsonFile.js           leitura/escrita JSON à prova de arquivo corrompido
+    appPaths.js           resolve o diretório de dados (Electron ou Node puro)
   data/
-    cpu-benchmarks.json
-    gpu-benchmarks.json
-  test/                   testes da lógica pura (node:test)
+    cpu-benchmarks.json   388 entradas
+    gpu-benchmarks.json   349 entradas
+  scripts/
+    make-icon.js          gera o ícone do app por código (PNG + ICO, sem asset externo)
+    validate-tables.js    valida a coerência das tabelas de benchmark
+    selfcheck.js          smoke test do pipeline inteiro
+  test/                   106 testes (node:test)
 ```
+
+O ícone do app não é um arquivo desenhado à mão — é [renderado por
+código](scripts/make-icon.js) em Node puro (encoder PNG sobre `zlib` + container ICO com
+entradas BMP), então `npm run icons` regenera tudo em qualquer máquina.
+
+---
 
 ## Licença
 
-MIT.
+[MIT](LICENSE).

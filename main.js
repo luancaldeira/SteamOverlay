@@ -58,6 +58,7 @@ const state = {
   extras: null, // { minimum: [...], recommended: [...] }
   stale: false, // requirements served from cache after a failed fetch
   shortcut: null, // active global show/hide accelerator, or null if none registered
+  clickThroughShortcut: null, // active global click-through-off accelerator, or null if none registered
   settings: null,
   version: app.getVersion(),
   updatedAt: 0,
@@ -469,6 +470,16 @@ ipcMain.on('quit', () => app.quit());
 
 // ---- app lifecycle -------------------------------------------------------
 const SHORTCUTS = ['CommandOrControl+Shift+S', 'CommandOrControl+Alt+S', 'CommandOrControl+Shift+F10'];
+// Dedicated escape hatch: click-through makes the whole window ignore the mouse,
+// including the very checkbox that turns click-through off. Show/hide alone can't
+// fix that (hiding then re-showing still leaves it unclickable), so this always
+// forces click-through off and brings the window front — never a toggle, so it
+// can't accidentally re-trap the user if pressed again.
+const CLICKTHROUGH_SHORTCUTS = [
+  'CommandOrControl+Alt+C',
+  'CommandOrControl+Shift+C',
+  'CommandOrControl+Shift+F11',
+];
 
 function toggleWindow() {
   if (!win || win.isDestroyed()) return;
@@ -480,22 +491,31 @@ function toggleWindow() {
   refreshTray();
 }
 
-// Register the first accelerator that the OS grants. register() returns false
-// (no throw) when another app already owns the combo; without a fallback a
-// hidden overlay could become unrecoverable.
-function registerShortcut() {
-  for (const acc of SHORTCUTS) {
+function recoverClickThrough() {
+  if (!win || win.isDestroyed()) return;
+  updateSettings({ clickThrough: false });
+  win.show();
+  win.focus();
+  refreshTray();
+}
+
+// Register the first accelerator in `list` that the OS grants. register() returns
+// false (no throw) when another app already owns the combo; without a fallback a
+// hidden or click-through-locked overlay could become unrecoverable.
+function registerAccelerators(list, handler) {
+  for (const acc of list) {
     try {
-      if (globalShortcut.register(acc, toggleWindow)) {
-        state.shortcut = acc;
-        pushState();
-        return;
-      }
+      if (globalShortcut.register(acc, handler)) return acc;
     } catch {
       /* try next */
     }
   }
-  state.shortcut = null; // none available — tray menu and relaunch still re-show
+  return null; // none available — tray menu and relaunch still work
+}
+
+function registerShortcuts() {
+  state.shortcut = registerAccelerators(SHORTCUTS, toggleWindow);
+  state.clickThroughShortcut = registerAccelerators(CLICKTHROUGH_SHORTCUTS, recoverClickThrough);
   pushState();
 }
 
@@ -514,7 +534,7 @@ if (!gotLock) {
   });
   app.whenReady().then(() => {
     bootstrap();
-    registerShortcut();
+    registerShortcuts();
   });
 }
 

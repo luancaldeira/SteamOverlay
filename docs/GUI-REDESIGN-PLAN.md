@@ -322,9 +322,7 @@ O resto da Fase 4 continua pendente.
 ## 6. O que fica pendente
 
 1. **`docs/shot-*.png` mostram o design antigo.** O README aponta para eles.
-   Regravar é Fase 5. `shot-minimo.png` já regravado (Resident Evil 4, modo CDP,
-   tema vermelho extraído da arte). Faltam `shot-recomendado.png`,
-   `shot-config.png` e `shot-compacto.png`.
+   Regravar é Fase 5.
 2. **Fase 4 restante** — estados `setup`/`no-steam`/erro ainda usam a caixa de
    mensagem padrão (funcional e coerente, mas sem tratamento próprio).
 3. **Fase 5 inteira** — GIF de demonstração, hero no README, ícones do app e da

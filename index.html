@@ -2,7 +2,7 @@
 <html lang="pt-br">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self';" />
     <link rel="stylesheet" href="styles.css" />
     <title>Steam Spec Overlay</title>
   </head>
@@ -10,24 +10,56 @@
     <div id="app">
       <header id="titlebar">
         <div class="tb-left">
+          <svg class="tb-mark" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M2 11V5M6 11V7.5M10 11V2.5M14 11V8.5" />
+            <path class="tb-mark-base" d="M1.5 13.5h13" />
+          </svg>
           <span class="tb-title">SPEC OVERLAY</span>
           <span id="mode" class="mode" title="modo de detecção">
             <span class="mode-dot"></span><span id="mode-text">…</span>
           </span>
         </div>
         <div class="tb-btns">
-          <button id="btn-settings" class="tb-btn" title="Configurações">⚙</button>
-          <button id="btn-hide" class="tb-btn" title="Esconder">–</button>
-          <button id="btn-quit" class="tb-btn" title="Sair">×</button>
+          <button id="btn-settings" class="tb-btn" title="Configurações" aria-label="Configurações">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h11M2.5 11h11"/><circle cx="6" cy="5" r="1.9"/><circle cx="10.5" cy="11" r="1.9"/></svg>
+          </button>
+          <button id="btn-hide" class="tb-btn" title="Esconder" aria-label="Esconder">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9"/></svg>
+          </button>
+          <button id="btn-quit" class="tb-btn" title="Sair" aria-label="Sair">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+          </button>
         </div>
       </header>
 
       <main id="body">
-        <section id="art" class="art" hidden><img id="art-img" alt="" /></section>
+        <section id="art" class="art" hidden>
+          <img id="art-img" alt="" />
+          <span class="art-veil" aria-hidden="true"></span>
+        </section>
 
-        <section id="game">
+        <section id="head" class="head">
           <div id="game-name" class="game-name">—</div>
           <div id="game-sub" class="game-sub"></div>
+        </section>
+
+        <section class="readout">
+          <span id="read-num" class="read-num">--</span>
+          <div id="verdict" class="verdict"></div>
+        </section>
+
+        <section class="rule">
+          <div class="rule-ticks" aria-hidden="true"><i class="rule-ticks-major"></i></div>
+          <div class="rule-track">
+            <div id="rule-fill" class="rule-fill"></div>
+            <div class="rule-datum" aria-hidden="true"></div>
+          </div>
+          <div id="rule-needle" class="rule-needle" aria-hidden="true"></div>
+          <div class="rule-scale" aria-hidden="true">
+            <span>0</span>
+            <span class="rule-datum-label">REQUISITO</span>
+            <span>100</span>
+          </div>
         </section>
 
         <section id="toggle" class="toggle" hidden>
@@ -35,33 +67,22 @@
           <button data-req="minimum" class="seg">MÍNIMO</button>
         </section>
 
-        <section id="gauge-wrap">
-          <svg id="gauge" viewBox="0 0 200 120" aria-hidden="true">
-            <path class="gauge-track" d="M 20 110 A 80 80 0 0 1 180 110" pathLength="100" />
-            <path id="gauge-value" class="gauge-value" d="M 20 110 A 80 80 0 0 1 180 110" pathLength="100" stroke-dasharray="0 100" />
-            <line id="needle" x1="100" y1="110" x2="20" y2="110" class="needle" />
-            <circle cx="100" cy="110" r="5" class="needle-hub" />
-          </svg>
-          <div class="gauge-center">
-            <span id="gauge-num" class="gauge-num">--</span><span class="gauge-pct">%</span>
-          </div>
-          <div id="verdict" class="verdict"></div>
-        </section>
+        <section id="digest" class="digest" hidden></section>
 
         <section id="components">
           <div class="comp" data-c="gpu">
             <div class="comp-head"><span class="comp-label">GPU</span><span class="comp-score">--</span></div>
-            <div class="bar"><div class="bar-fill"></div></div>
+            <div class="bar"><div class="bar-fill"></div><div class="bar-datum"></div></div>
             <div class="comp-detail"></div>
           </div>
           <div class="comp" data-c="cpu">
             <div class="comp-head"><span class="comp-label">CPU</span><span class="comp-score">--</span></div>
-            <div class="bar"><div class="bar-fill"></div></div>
+            <div class="bar"><div class="bar-fill"></div><div class="bar-datum"></div></div>
             <div class="comp-detail"></div>
           </div>
           <div class="comp" data-c="ram">
             <div class="comp-head"><span class="comp-label">RAM</span><span class="comp-score">--</span></div>
-            <div class="bar"><div class="bar-fill"></div></div>
+            <div class="bar"><div class="bar-fill"></div><div class="bar-datum"></div></div>
             <div class="comp-detail"></div>
           </div>
         </section>
@@ -77,11 +98,11 @@
             <input id="set-opacity" type="range" min="35" max="100" step="5" />
             <output id="set-opacity-val">100%</output>
           </label>
-          <label class="row check"><input id="set-ontop" type="checkbox" /><span>Sempre no topo</span></label>
-          <label class="row check"><input id="set-click" type="checkbox" /><span>Click-through (ignora o mouse)</span></label>
-          <label class="row check"><input id="set-compact" type="checkbox" /><span>Modo compacto</span></label>
-          <label class="row check"><input id="set-art" type="checkbox" /><span>Mostrar arte do jogo</span></label>
-          <label class="row check"><input id="set-autostart" type="checkbox" /><span>Iniciar com o Windows</span></label>
+          <label class="row check"><span>Sempre no topo</span><input id="set-ontop" type="checkbox" /><i class="sw"></i></label>
+          <label class="row check"><span>Click-through (ignora o mouse)</span><input id="set-click" type="checkbox" /><i class="sw"></i></label>
+          <label class="row check"><span>Modo compacto</span><input id="set-compact" type="checkbox" /><i class="sw"></i></label>
+          <label class="row check"><span>Mostrar arte do jogo</span><input id="set-art" type="checkbox" /><i class="sw"></i></label>
+          <label class="row check"><span>Iniciar com o Windows</span><input id="set-autostart" type="checkbox" /><i class="sw"></i></label>
           <label class="row">
             <span>Abrir em</span>
             <select id="set-reqtype">

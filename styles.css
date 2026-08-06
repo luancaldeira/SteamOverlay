@@ -1,20 +1,79 @@
+/* ==========================================================================
+   Steam Spec Overlay
+
+   Ideia central: a arte da loja é a única coisa que muda a cada jogo, então
+   ela não decora — ela manda. O banner aparece inteiro, em cor cheia, e a
+   matiz dominante dele vira o acento da interface (--accent, escrito em
+   #app pelo renderer). Cyberpunk fica amarelo, Doom vermelho, Hades roxo.
+   O resto do app é cromaticamente mudo de propósito, para que a cor do jogo
+   seja a única cor na tela.
+   ========================================================================== */
+
+@font-face {
+  font-family: "Archivo";
+  src: url("assets/fonts/archivo-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Martian Mono";
+  src: url("assets/fonts/martianmono-sc-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Martian Mono";
+  src: url("assets/fonts/martianmono-sc-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+}
+
 :root {
-  --bg: rgba(14, 17, 22, 0.92);
-  --bg-2: rgba(24, 29, 38, 0.9);
-  --stroke: rgba(255, 255, 255, 0.08);
-  --stroke-2: rgba(255, 255, 255, 0.14);
-  --fg: #e6edf3;
-  --fg-dim: #8b98a5;
-  --fg-faint: #5a6673;
-  --mono: "Cascadia Code", "Consolas", "SF Mono", ui-monospace, monospace;
-  --green: #35d07f;
-  --lime: #9ad34b;
-  --amber: #f2b13c;
-  --red: #f2555a;
-  --accent: #58a6ff;
+  /* superfícies — ardósia da Steam, neutra de propósito */
+  --void: #080b10;
+  --panel: #0f151d;
+  --panel-2: #151e29;
+  --rule: #1e2a37;
+  --rule-2: #2b3c4e;
+
+  /* tinta */
+  --ink: #e4ecf5;
+  --ink-dim: #7e8fa3;   /* 5.95:1 sobre --void */
+  --ink-faint: #74839a; /* 5.12:1 sobre --void, 4.76:1 sobre --panel
+                           (o #5c6c7e original dava 3.66:1 e reprovava) */
+
+  /* Acento: sobrescrito em #app pelo renderer com a matiz extraída da arte.
+     O valor aqui é só o fallback de quando não há arte — verde de ação da
+     Steam. */
+  --accent: #96bf3e;
+  --accent-ink: #10180a;
+  --tint: transparent;
+
+  --alarm: #e8564c;
+
+  --sans: "Archivo", "Segoe UI", sans-serif;
+  --mono: "Martian Mono", "Cascadia Code", "Consolas", ui-monospace, monospace;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --snap: cubic-bezier(0.32, 1.12, 0.4, 1); /* leve passagem do ponto, como
+     agulha de galvanometro assentando — nao o quique elastico de 1.4 */
+
+  /* score 70 = requisito atendido exatamente
+     (lib/compare.js → scoreFromRatio, ratio 1.0 → 70) */
+  --datum: 70%;
+
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Regras de autor (.toggle{display:flex} etc.) vencem o [hidden] da folha do
+   user-agent, então secções "escondidas" continuavam pintando. Trava aqui. */
+[hidden] { display: none !important; }
 
 html, body {
   width: 100%;
@@ -22,176 +81,929 @@ html, body {
   background: transparent;
   overflow: hidden;
   user-select: none;
-  font-family: var(--mono);
-  color: var(--fg);
+  font-family: var(--sans);
+  font-optical-sizing: auto;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
+  position: relative;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  border: 1px solid var(--stroke-2);
-  border-radius: 14px;
+  background: var(--void);
+  border-radius: 12px;
   overflow: hidden;
-  backdrop-filter: blur(6px);
+  /* Elevação declarada uma vez: linha de luz no topo (a quina que pega a luz
+     do ambiente) mais a sombra projetada. O anel de 1px no perímetro inteiro
+     por baixo da sombra era o "ghost card". */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 18px 40px -12px rgba(0, 0, 0, 0.8);
+  transition: background 0.6s var(--ease);
+}
+/* respiro da cor do jogo na base do painel, quase subliminar */
+#app::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(180deg, transparent 42%, var(--tint) 100%);
+  opacity: 0.85;
+  pointer-events: none;
+  transition: background 0.6s var(--ease);
 }
 
-/* titlebar */
+/* Superfícies de navegador — seleção, foco, barra de rolagem, cursor de
+   texto. Nada disso é desenhado por padrão e tudo carrega o visual de
+   ninguém. É o sinal mais barato de que a tela foi construída. */
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+.settings::-webkit-scrollbar { width: 7px; }
+.settings::-webkit-scrollbar-track { background: transparent; }
+.settings::-webkit-scrollbar-thumb {
+  background: var(--rule-2);
+  border-radius: 4px;
+}
+.settings::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+
+/* ---------- titlebar ---------------------------------------------------- */
 #titlebar {
   -webkit-app-region: drag;
+  position: relative;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0));
-  border-bottom: 1px solid var(--stroke);
+  height: 32px;
+  padding: 0 8px 0 12px;
   flex: 0 0 auto;
 }
-.tb-left { display: flex; align-items: center; gap: 10px; }
-.tb-title { font-size: 10px; letter-spacing: 2px; color: var(--fg-dim); font-weight: 600; }
-.mode { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; letter-spacing: 1px; color: var(--fg-faint); }
-.mode-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-faint); box-shadow: 0 0 6px currentColor; }
-.mode.cdp .mode-dot { background: var(--green); color: var(--green); }
-.mode.fallback .mode-dot { background: var(--amber); color: var(--amber); }
-.mode.setup .mode-dot, .mode.no-steam .mode-dot { background: var(--red); color: var(--red); }
-.mode.cdp #mode-text { color: var(--green); }
-.mode.fallback #mode-text { color: var(--amber); }
+.tb-left { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.tb-mark { width: 14px; height: 14px; flex: 0 0 auto; color: var(--accent); transition: color 0.6s var(--ease); }
+.tb-mark path { stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; fill: none; }
+.tb-mark .tb-mark-base { stroke-width: 1.2; opacity: 0.45; }
+.tb-title {
+  font-size: 10px;
+  font-weight: 700;
+  font-stretch: 88%;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+}
+.mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+.mode-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 18%, transparent);
+}
+.mode.cdp { color: var(--accent); }
+.mode.fallback { color: var(--ink-dim); }
+.mode.setup, .mode.no-steam { color: var(--alarm); }
+.mode.cdp .mode-dot { animation: pulse 2.6s var(--ease) infinite; }
 
-.tb-btns { -webkit-app-region: no-drag; display: flex; gap: 4px; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 18%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 6%, transparent); }
+}
+
+.tb-btns { -webkit-app-region: no-drag; display: flex; gap: 2px; }
 .tb-btn {
   -webkit-app-region: no-drag;
-  width: 22px; height: 22px;
-  background: transparent; border: 1px solid var(--stroke); border-radius: 6px;
-  color: var(--fg-dim); font-size: 13px; line-height: 1; cursor: pointer;
+  width: 24px; height: 24px;
+  background: transparent; border: none; border-radius: 5px;
+  color: var(--ink-faint); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
 }
-.tb-btn:hover { background: var(--bg-2); color: var(--fg); }
-#btn-quit:hover { border-color: var(--red); color: var(--red); }
-#btn-settings.on { border-color: var(--accent); color: var(--accent); }
-
-/* body */
-#body { flex: 1 1 auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
-
-/* store artwork */
-.art { flex: 0 0 auto; border-radius: 9px; overflow: hidden; border: 1px solid var(--stroke); line-height: 0; }
-.art img { width: 100%; height: 88px; object-fit: cover; display: block; opacity: 0.92; }
-
-#game { text-align: center; flex: 0 0 auto; }
-.game-name { font-size: 15px; font-weight: 600; color: var(--fg); line-height: 1.2; }
-.game-sub { font-size: 9px; color: var(--fg-faint); letter-spacing: 1px; margin-top: 2px; }
-
-/* toggle */
-.toggle { display: flex; gap: 0; align-self: center; border: 1px solid var(--stroke-2); border-radius: 8px; overflow: hidden; flex: 0 0 auto; }
-.seg {
-  -webkit-app-region: no-drag;
-  background: transparent; border: none; color: var(--fg-faint);
-  font-family: var(--mono); font-size: 9px; letter-spacing: 1px; padding: 5px 12px; cursor: pointer;
+.tb-btn svg { width: 15px; height: 15px; }
+.tb-btn svg path, .tb-btn svg circle {
+  stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; fill: none;
 }
-.seg.active { background: var(--bg-2); color: var(--fg); }
-.seg:not(.active):hover { color: var(--fg-dim); }
+.tb-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--ink); }
+#btn-quit:hover { background: color-mix(in srgb, var(--alarm) 20%, transparent); color: var(--alarm); }
+#btn-settings.on { color: var(--accent); background: rgba(255, 255, 255, 0.08); }
 
-/* gauge */
-#gauge-wrap { position: relative; display: flex; flex-direction: column; align-items: center; flex: 0 0 auto; }
-#gauge { width: 200px; height: 120px; }
-.gauge-track { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 10; stroke-linecap: round; }
-.gauge-value { fill: none; stroke: var(--fg-faint); stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray 0.5s ease, stroke 0.4s ease; }
-.needle { stroke: var(--fg); stroke-width: 2.5; stroke-linecap: round; transform-origin: 100px 110px; transition: transform 0.5s cubic-bezier(.2,.8,.2,1); }
-.needle-hub { fill: var(--fg); }
-.gauge-center { position: absolute; top: 64px; left: 0; right: 0; text-align: center; }
-.gauge-num { font-size: 34px; font-weight: 700; letter-spacing: -1px; }
-.gauge-pct { font-size: 13px; color: var(--fg-dim); margin-left: 1px; }
-.verdict { font-size: 11px; color: var(--fg-dim); text-align: center; margin-top: 2px; min-height: 14px; letter-spacing: 0.3px; }
-.approx-tag { font-size: 8px; letter-spacing: 1px; color: var(--fg-faint); border: 1px solid var(--stroke-2); border-radius: 4px; padding: 1px 4px; margin-left: 6px; vertical-align: 2px; }
+/* ---------- body -------------------------------------------------------- */
+#body {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  padding: 0 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
 
-/* components */
-#components { display: flex; flex-direction: column; gap: 9px; flex: 0 0 auto; }
-.comp-head { display: flex; justify-content: space-between; align-items: baseline; }
-.comp-label { font-size: 10px; letter-spacing: 2px; color: var(--fg-dim); }
-.comp-score { font-size: 11px; color: var(--fg); font-weight: 600; }
-.bar { height: 6px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; margin: 4px 0 3px; }
-.bar-fill { height: 100%; width: 0; background: var(--fg-faint); border-radius: 4px; transition: width 0.5s ease, background 0.4s ease; }
-.comp-detail { font-size: 9px; color: var(--fg-faint); line-height: 1.35; letter-spacing: 0.2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.comp.unidentified .comp-label,
-.comp.unidentified .comp-score { color: var(--fg-faint); }
-.comp .warn { color: var(--amber); }
+/* ---------- a arte do jogo ---------------------------------------------- */
+/* Cor cheia, altura de verdade, sangrando até debaixo da titlebar. É a
+   identidade do app: a tela inteira muda de jogo para jogo. O véu é
+   ancorado embaixo — só o suficiente para assentar o nome. */
+.art {
+  position: absolute;
+  top: -32px; left: 0; right: 0;
+  height: 196px;
+  z-index: 0;
+  line-height: 0;
+  pointer-events: none;
+}
+.art img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(1.08);
+}
+.art-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(8, 11, 16, 0.62) 0, rgba(8, 11, 16, 0) 26%, rgba(8, 11, 16, 0) 40%, rgba(8, 11, 16, 0.82) 78%, var(--void) 100%),
+    radial-gradient(120% 80% at 50% 30%, transparent 40%, rgba(8, 11, 16, 0.5) 100%);
+}
 
-/* extra requirement chips */
-.extras { display: flex; flex-wrap: wrap; gap: 5px; flex: 0 0 auto; }
-.chip {
-  font-size: 8.5px; letter-spacing: 0.5px; padding: 3px 7px; border-radius: 5px;
-  border: 1px solid var(--stroke); color: var(--fg-faint); background: rgba(255,255,255,0.02);
+/* ---------- nome do jogo, sobre a arte ---------------------------------- */
+.head {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  margin-top: 10px;
+}
+#app.has-art .head { margin-top: 108px; }
+.game-name {
+  font-size: 21px;
+  font-weight: 800;
+  font-stretch: 80%;
+  letter-spacing: -0.012em;
+  line-height: 1.06;
+  color: #fff;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#app:not(.has-art) .game-name { color: var(--ink); text-shadow: none; }
+.game-sub {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
+  margin-top: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#app.has-art .game-sub { color: rgba(255, 255, 255, 0.62); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9); }
+
+/* ---------- leitura: número + veredito lado a lado ---------------------- */
+.readout {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+  margin-top: 2px;
+}
+.read-num {
+  font-size: 54px;
+  font-weight: 800;
+  font-stretch: 102%;
+  letter-spacing: -0.05em;
+  line-height: 0.86;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  transition: color 0.45s var(--ease);
+}
+#app.b-ok .read-num,
+#app.b-fair .read-num { color: var(--accent); }
+#app.b-warn .read-num { color: var(--ink); }
+#app.b-bad .read-num { color: var(--alarm); }
+
+.verdict {
+  font-size: 12px;
+  font-weight: 600;
+  font-stretch: 90%;
+  line-height: 1.25;
+  color: var(--ink-dim);
+  transition: color 0.45s var(--ease);
+}
+#app.b-ok .verdict,
+#app.b-fair .verdict { color: var(--accent); }
+#app.b-warn .verdict { color: var(--ink); }
+#app.b-bad .verdict { color: var(--alarm); }
+.approx-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule-2);
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+/* ---------- régua de tolerância ----------------------------------------- */
+/* Substitui o velocímetro: 34px no lugar de 120px, e carrega mais
+   informação — a posição exata do requisito fica marcada na escala. */
+.rule {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  padding-top: 8px;
+}
+.rule-ticks {
+  position: relative;
+  height: 5px;
+  background: repeating-linear-gradient(90deg, var(--rule-2) 0 1px, transparent 1px 2.5%);
+}
+.rule-ticks-major {
+  position: absolute;
+  left: 0; right: 0; top: -6px;
+  height: 11px;
+  background: repeating-linear-gradient(90deg, var(--ink-dim) 0 1px, transparent 1px 25%);
+}
+.rule-track {
+  position: relative;
+  height: 6px;
+  margin-top: 4px;
+  background: var(--rule);
+  border-radius: 3px;
+}
+.rule-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 3px;
+  background: var(--ink-faint);
+  /* clip-path em vez de width: composited, sem layout a cada frame e sem
+     achatar o raio das pontas enquanto anima */
+  clip-path: inset(0 calc(100% - var(--v, 0%)) 0 0);
+  transition: clip-path 0.55s var(--ease-out), background 0.45s var(--ease);
+}
+#app.b-ok .rule-fill,
+#app.b-fair .rule-fill { background: var(--accent); }
+#app.b-warn .rule-fill { background: var(--ink-dim); }
+#app.b-bad .rule-fill { background: var(--alarm); }
+
+.rule-datum {
+  position: absolute;
+  top: -4px; bottom: -4px;
+  left: var(--datum);
+  width: 1px;
+  background: var(--ink);
+}
+
+.rule-needle {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: 7px;
+  height: 21px;
+  margin-left: -3.5px;
+  opacity: 0;
+  transition: left 0.62s var(--snap), opacity 0.3s var(--ease);
+}
+.rule-needle::before {
+  content: "";
+  position: absolute;
+  left: 3px; top: 5px; bottom: 0;
+  width: 1px;
+  background: var(--ink);
+}
+.rule-needle::after {
+  content: "";
+  position: absolute;
+  left: 0; top: 0;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 5px solid var(--ink);
+}
+#app.has-reading .rule-needle { opacity: 1; }
+
+.rule-scale {
+  position: relative;
+  height: 12px;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+}
+.rule-scale > span:first-child { position: absolute; left: 0; }
+.rule-scale > span:last-child { position: absolute; right: 0; }
+.rule-datum-label {
+  position: absolute;
+  left: var(--datum);
+  transform: translateX(-50%);
+  color: var(--ink-dim);
   white-space: nowrap;
 }
-.chip.ok { color: var(--green); border-color: rgba(53,208,127,0.3); }
-.chip.bad { color: var(--red); border-color: rgba(242,85,90,0.35); }
-.chip.soft { opacity: 0.75; }
 
-/* message / states */
-.message { background: var(--bg-2); border: 1px solid var(--stroke); border-radius: 10px; padding: 12px; font-size: 11px; color: var(--fg-dim); line-height: 1.5; flex: 0 0 auto; }
-.message h4 { font-size: 11px; color: var(--fg); letter-spacing: 1px; margin-bottom: 6px; }
-.message code { color: var(--accent); background: rgba(88,166,255,0.1); padding: 1px 5px; border-radius: 4px; font-size: 10px; }
-.message ol { margin: 6px 0 8px 16px; }
-.message li { margin: 3px 0; }
+/* ---------- toggle recomendado / mínimo --------------------------------- */
+.toggle {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  gap: 1px;
+  padding: 1px;
+  background: var(--panel);
+  border-radius: 6px;
+}
+.seg {
+  -webkit-app-region: no-drag;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.14s var(--ease), background 0.14s var(--ease);
+}
+.seg.active { background: var(--accent); color: var(--accent-ink); }
+.seg:not(.active):hover { color: var(--ink-dim); }
+
+/* ---------- medidores por componente ------------------------------------ */
+/* Três colunas paralelas cortadas por uma única linha de requisito. Com os
+   medidores lado a lado sob a mesma régua, "quem passa e quem não passa" vira
+   uma leitura só, em vez de três leituras separadas.
+
+   O detalhe de cada componente não fica na tela: entra na faixa de leitura
+   quando o ponteiro (ou o foco do teclado) alcança a coluna. Sem ponteiro, a
+   faixa mostra o gargalo — a menor nota — que é a resposta mais útil por
+   padrão e evita que a faixa fique vazia. */
+#components {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  column-gap: 10px;
+  padding-bottom: 19px; /* faixa reservada para a leitura */
+}
+
+.comp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3px 0 4px;
+  border-radius: 6px;
+  cursor: default;
+  transition: background 0.16s var(--ease);
+}
+.comp:hover,
+.comp.showing { background: rgba(255, 255, 255, 0.04); }
+/* .comp-head existe só como agrupador no HTML; aqui nota e rótulo entram
+   direto na coluna e `order` os separa acima e abaixo da barra */
+.comp-head { display: contents; }
+
+.comp-score {
+  order: 0;
+  height: 20px;
+  line-height: 20px;
+  font-size: 15px;
+  font-weight: 700;
+  font-stretch: 96%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  transition: color 0.4s var(--ease);
+}
+.comp.b-ok .comp-score,
+.comp.b-fair .comp-score { color: var(--accent); }
+.comp.b-bad .comp-score { color: var(--alarm); }
+
+.bar {
+  order: 1;
+  position: relative;
+  width: 34px;
+  height: 78px;
+  margin-top: 5px;
+  background: var(--rule);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.bar-fill {
+  width: 100%;
+  height: 100%;
+  background: var(--ink-faint);
+  /* mesma custom property do layout antigo, recortada por cima */
+  clip-path: inset(calc(100% - var(--v, 0%)) 0 0 0);
+  transition: clip-path 0.55s var(--ease-out), background 0.4s var(--ease);
+}
+.comp.b-ok .bar-fill,
+.comp.b-fair .bar-fill { background: var(--accent); }
+.comp.b-warn .bar-fill { background: var(--ink-dim); }
+.comp.b-bad .bar-fill { background: var(--alarm); }
+/* coluna sem dado vira fantasma, não retângulo vazio */
+.comp.unidentified .bar {
+  background: repeating-linear-gradient(135deg, var(--rule) 0 3px, transparent 3px 6px);
+}
+/* o traço por barra sai de cena: quem marca o requisito é a régua contínua */
+.bar-datum { display: none; }
+
+.comp-label {
+  order: 2;
+  padding-top: 7px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+}
+.comp.unidentified .comp-label,
+.comp.unidentified .comp-score { color: var(--ink-faint); }
+
+/* a régua do requisito atravessa as três colunas de uma vez.
+   3 (padding) + 20 (nota) + 5 (margem) + 78 * 0.3 = 51.4 */
+#components::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  top: 51px;
+  border-top: 1px dashed var(--ink-faint);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* faixa de leitura: as três se sobrepõem na mesma linha, só uma acende */
+.comp-detail {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  font-family: var(--mono);
+  font-size: 8px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 0.16s var(--ease);
+  pointer-events: none;
+}
+.comp.showing .comp-detail { opacity: 1; }
+.comp.unidentified .comp-detail { color: var(--ink-faint); font-style: italic; }
+.comp .warn { color: var(--alarm); }
+.comp-detail::before {
+  color: var(--ink-faint);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.comp[data-c="gpu"] .comp-detail::before { content: "GPU  "; }
+.comp[data-c="cpu"] .comp-detail::before { content: "CPU  "; }
+.comp[data-c="ram"] .comp-detail::before { content: "RAM  "; }
+
+/* ---------- resumo de uma linha (modo compacto) ------------------------- */
+.digest {
+  display: none;
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  border-top: 1px solid var(--rule);
+  padding-top: 9px;
+}
+#app.compact .digest { display: grid; grid-template-columns: repeat(3, 1fr); }
+.dg { display: flex; flex-direction: column; gap: 3px; }
+.dg-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+.dg-val {
+  font-size: 16px;
+  font-weight: 700;
+  font-stretch: 96%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--ink-dim);
+}
+.dg.b-ok .dg-val, .dg.b-fair .dg-val { color: var(--accent); }
+.dg.b-warn .dg-val { color: var(--ink); }
+.dg.b-bad .dg-val { color: var(--alarm); }
+
+/* ---------- chips de requisitos extras ---------------------------------- */
+.extras {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  /* Rede de segurança: se um jogo trouxer chips demais, esta faixa encolhe e
+     corta em vez de empurrar o rodapé para fora da janela de altura fixa. */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 8px;
+  padding: 3px 7px 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  color: var(--ink-faint);
+  background: var(--panel);
+  white-space: nowrap;
+}
+.chip-mark { width: 8px; height: 8px; flex: 0 0 auto; }
+.chip-mark path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Os chips ficam fora do acento de propósito: com a cor vindo da arte, um
+   "✓ DirectX 12" em vermelho (Hades) ou amarelo (Cyberpunk) lê como erro.
+   A marca desenhada já carrega a semântica; só a falha precisa de cor. */
+.chip.ok { color: var(--ink-dim); }
+.chip.bad { color: var(--alarm); border-color: color-mix(in srgb, var(--alarm) 32%, transparent); }
+.chip.soft { opacity: 0.7; }
+
+/* ---------- mensagens e estados ----------------------------------------- */
+.message {
+  position: relative;
+  z-index: 2;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  padding: 14px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  line-height: 1.55;
+  flex: 0 0 auto;
+}
+.message.bare { background: none; border: none; padding: 4px 0; }
+.message h4 {
+  font-size: 10px;
+  font-weight: 700;
+  font-stretch: 88%;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+  margin-bottom: 7px;
+}
+.message code {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
 .msg-btn {
   -webkit-app-region: no-drag;
-  display: inline-block; margin-top: 6px; margin-right: 6px;
-  background: var(--accent); color: #06121f; border: none; border-radius: 6px;
-  font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
-  padding: 6px 12px; cursor: pointer;
+  display: inline-block;
+  margin-top: 8px;
+  margin-right: 6px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 5px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  font-stretch: 92%;
+  padding: 7px 13px;
+  cursor: pointer;
+  transition: filter 0.14s var(--ease);
 }
-.msg-btn.ghost { background: transparent; color: var(--fg-dim); border: 1px solid var(--stroke-2); }
-.msg-btn:hover { filter: brightness(1.1); }
+.msg-btn.ghost { background: transparent; color: var(--ink-dim); border: 1px solid var(--rule-2); }
+.msg-btn:hover { filter: brightness(1.12); }
+.msg-btn.ghost:hover { color: var(--ink); border-color: var(--ink-faint); filter: none; }
 
-/* settings */
-.settings { -webkit-app-region: no-drag; background: var(--bg-2); border: 1px solid var(--stroke); border-radius: 10px; padding: 12px; font-size: 10px; color: var(--fg-dim); flex: 1 1 auto; overflow-y: auto; }
-.settings h4 { font-size: 10px; color: var(--fg); letter-spacing: 2px; margin-bottom: 10px; }
-.settings .row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; cursor: pointer; }
-.settings .row > span:first-child { flex: 0 0 74px; }
-.settings .row.check > span { flex: 1 1 auto; }
-.settings input[type="range"] { flex: 1 1 auto; accent-color: var(--accent); height: 3px; }
-.settings input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px; flex: 0 0 auto; }
+/* estado vazio — a tela mais vista do app, então ela leva o instrumento em
+   repouso e a ficha da máquina em vez de uma linha de texto cinza */
+.idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0 4px;
+  color: var(--ink-dim);
+}
+.idle-scan {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  background: repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 6.25%);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+}
+.idle-scan::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent);
+  animation: sweep 3.4s var(--ease) infinite;
+}
+@keyframes sweep {
+  0%, 100% { left: 8%; opacity: 0.35; }
+  50% { left: 92%; opacity: 1; }
+}
+.idle-text {
+  font-size: 12px;
+  font-weight: 500;
+  font-stretch: 92%;
+}
+
+.rig {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 13px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  text-align: left;
+}
+.rig-title {
+  font-size: 9px;
+  font-weight: 700;
+  font-stretch: 88%;
+  letter-spacing: 0.14em;
+  color: var(--ink-faint);
+  padding-bottom: 8px;
+  margin-bottom: 9px;
+  border-bottom: 1px solid var(--rule);
+}
+.rig-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+}
+.rig-key {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+.rig-val {
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1.45;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rig-sub {
+  display: block;
+  font-style: normal;
+  font-size: 8px;
+  color: var(--ink-dim);
+  margin-top: 2px;
+}
+
+/* ---------- configurações ----------------------------------------------- */
+.settings {
+  -webkit-app-region: no-drag;
+  position: relative;
+  z-index: 2;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  font-size: 11px;
+  color: var(--ink-dim);
+  padding-top: 12px;
+}
+.settings h4 {
+  font-size: 10px;
+  font-weight: 700;
+  font-stretch: 88%;
+  letter-spacing: 0.14em;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+.settings .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  margin-bottom: 3px;
+  cursor: pointer;
+}
+.settings .row > span:first-child { flex: 0 0 66px; }
+.settings .row.check > span:first-child { flex: 1 1 auto; }
+
+.settings input[type="range"] {
+  flex: 1 1 auto;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--rule);
+  cursor: pointer;
+}
+.settings input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 2px solid var(--void);
+  box-shadow: 0 0 0 1px var(--rule-2);
+}
+.settings output {
+  flex: 0 0 32px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--ink);
+}
+
+/* toggle custom no lugar do checkbox nativo */
+.settings .row.check input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.sw {
+  flex: 0 0 auto;
+  position: relative;
+  width: 26px; height: 15px;
+  border-radius: 8px;
+  background: var(--rule);
+  transition: background 0.18s var(--ease);
+}
+.sw::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition: transform 0.18s var(--ease-out), background 0.18s var(--ease);
+}
+/* o checkbox real está com opacity:0, então o anel de :focus-visible sumia
+   junto — sem isto os cinco toggles ficam invisíveis ao teclado */
+.settings input[type="checkbox"]:focus-visible + .sw {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.settings input[type="checkbox"]:checked + .sw { background: color-mix(in srgb, var(--accent) 30%, var(--rule)); }
+.settings input[type="checkbox"]:checked + .sw::after { transform: translateX(11px); background: var(--accent); }
+
 .settings select {
-  flex: 1 1 auto; background: var(--bg); color: var(--fg); border: 1px solid var(--stroke-2);
-  border-radius: 5px; font-family: var(--mono); font-size: 10px; padding: 3px 5px;
+  flex: 1 1 auto;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--rule-2);
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 4px 6px;
+  cursor: pointer;
 }
-.settings output { flex: 0 0 34px; text-align: right; color: var(--fg); }
-.set-actions { display: flex; gap: 6px; margin-top: 4px; }
-.set-hint { margin-top: 10px; font-size: 8.5px; color: var(--fg-faint); line-height: 1.5; }
+.set-actions { display: flex; gap: 6px; margin-top: 10px; }
+.set-hint {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--ink-faint);
+  line-height: 1.6;
+}
 
-/* idle pill */
-.idle { text-align: center; color: var(--fg-faint); font-size: 11px; letter-spacing: 1px; padding: 8px; }
-
-/* footer */
-#foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 7px 14px; border-top: 1px solid var(--stroke); flex: 0 0 auto; }
-.foot-note { font-size: 8px; color: var(--fg-faint); letter-spacing: 0.5px; flex: 1 1 auto; }
-.stale-badge { font-size: 7.5px; letter-spacing: 1px; color: var(--amber); border: 1px solid rgba(242,177,60,0.35); border-radius: 4px; padding: 2px 5px; }
+/* ---------- rodapé ------------------------------------------------------ */
+#foot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 28px;
+  padding: 0 16px;
+  border-top: 1px solid var(--rule);
+  flex: 0 0 auto;
+}
+.foot-note {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--ink-faint);
+  flex: 1 1 auto;
+}
+.stale-badge {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+  border: 1px solid var(--rule-2);
+  border-radius: 3px;
+  padding: 2px 5px;
+}
 .foot-btn {
   -webkit-app-region: no-drag;
-  background: transparent; border: 1px solid var(--stroke-2); border-radius: 5px;
-  color: var(--fg-dim); font-family: var(--mono); font-size: 9px; padding: 3px 9px; cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--rule-2);
+  border-radius: 4px;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 8px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.14s var(--ease), border-color 0.14s var(--ease);
 }
-.foot-btn:hover { color: var(--fg); border-color: var(--fg-dim); }
+.foot-btn:hover { color: var(--ink); border-color: var(--ink-faint); }
 
-/* dim main content while in a full-screen state message */
-#app.state-only #game,
+/* ---------- variantes de estado ----------------------------------------- */
+#app.state-only .head,
+#app.state-only .readout,
+#app.state-only .rule,
 #app.state-only #toggle,
-#app.state-only #gauge-wrap,
 #app.state-only #components,
+#app.state-only .digest,
 #app.state-only #extras,
 #app.state-only .art { display: none; }
+#app.state-only #body { justify-content: center; }
 
-/* settings panel takes the whole body */
 #app.settings-open .art,
-#app.settings-open #game,
+#app.settings-open .head,
+#app.settings-open .readout,
+#app.settings-open .rule,
 #app.settings-open #toggle,
-#app.settings-open #gauge-wrap,
 #app.settings-open #components,
+#app.settings-open .digest,
 #app.settings-open #extras,
 #app.settings-open #message { display: none; }
 
-/* compact mode: gauge + verdict only */
-#app.compact .art,
+/* compacto: arte + leitura + resumo de uma linha. Não é só "esconder
+   coisas" — é um layout próprio que ainda responde à pergunta. */
 #app.compact #components,
 #app.compact #extras { display: none; }
-#app.compact #body { gap: 8px; }
+#app.compact .art { height: 150px; }
+#app.compact.has-art .head { margin-top: 68px; }
+#app.compact .game-name { font-size: 17px; -webkit-line-clamp: 1; }
+#app.compact .read-num { font-size: 44px; }
+#app.compact #body { gap: 9px; }
+
+/* Sem leitura (carregando, erro, sem requisitos) a régua e o número saem de
+   cena — um "--" gigante pendurado no canto lê como placeholder quebrado. */
+#app:not(.has-reading) .rule,
+#app:not(.has-reading) .readout { display: none; }
+
+/* ---------- sequência de boot ------------------------------------------- */
+/* Um momento coreografado quando o jogo muda, em vez de seis transições
+   soltas disparando fora de sincronia. */
+@keyframes riseIn { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+@keyframes wipeIn { from { opacity: 0; clip-path: inset(0 100% 0 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
+@keyframes artIn { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: none; } }
+@keyframes ruleIn { from { opacity: 0; transform: scaleX(0.04); } to { opacity: 1; transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: translateY(4px) scale(0.96); } to { opacity: 1; transform: none; } }
+
+#app.booting .art { animation: artIn 0.8s var(--ease-out) both; }
+#app.booting .game-name { animation: wipeIn 0.44s var(--ease-out) 70ms both; }
+#app.booting .game-sub { animation: riseIn 0.36s var(--ease-out) 150ms both; }
+#app.booting .read-num { animation: riseIn 0.44s var(--ease-out) 130ms both; }
+#app.booting .verdict { animation: riseIn 0.4s var(--ease-out) 200ms both; }
+#app.booting .rule-ticks,
+#app.booting .rule-track { transform-origin: left center; animation: ruleIn 0.5s var(--ease-out) 170ms both; }
+#app.booting .rule-scale { animation: riseIn 0.4s var(--ease-out) 310ms both; }
+#app.booting #toggle { animation: riseIn 0.36s var(--ease-out) 240ms both; }
+#app.booting .comp:nth-child(1) { animation: riseIn 0.42s var(--ease-out) 300ms both; }
+#app.booting .comp:nth-child(2) { animation: riseIn 0.42s var(--ease-out) 340ms both; }
+#app.booting .comp:nth-child(3) { animation: riseIn 0.42s var(--ease-out) 380ms both; }
+#app.booting .chip { animation: popIn 0.3s var(--ease-out) both; }
+#app.booting .dg { animation: riseIn 0.4s var(--ease-out) 300ms both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

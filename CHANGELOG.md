@@ -1,5 +1,65 @@
 # Changelog
 
+## 1.1.0
+
+Redesenho completo da interface. A lógica de detecção e comparação (`lib/`) não
+foi tocada — as notas são as mesmas.
+
+### A arte do jogo passa a comandar a paleta
+
+- **Cor extraída do banner.** O renderer amostra a arte da loja, tira a matiz
+  dominante e a aplica como acento em toda a interface: número, régua, barras,
+  toggle ativo, marca da barra de título. Cyberpunk fica amarelo, Elden Ring
+  dourado, Stardew azul. Nenhuma captura de tela se parece com a outra.
+- A luminosidade do acento é **derivada por matiz**, não fixa. HSL não é
+  perceptualmente uniforme: no mesmo L=62%, amarelo dá 12:1 de contraste contra
+  o fundo e azul puro dá 3.31:1 — reprovaria. Uma busca binária acha a mínima
+  que atinge 4.6:1 e só sobe quando a matiz exige, então amarelo segue vibrante
+  e azul sobe para ~70%.
+- Matizes na faixa do vermelho de alarme são desviadas, senão um "92 · roda
+  tranquilo" sairia da mesma cor de "abaixo do requisito".
+- Sem arte, o acento cai no verde de ação da Steam.
+
+### Instrumento no lugar de dashboard
+
+- **Velocímetro removido.** No lugar, uma régua de tolerância com o requisito
+  marcado em 70 — o ponto em que `scoreFromRatio` considera o requisito
+  atendido exatamente. Ocupa 34px em vez de 120px e diz mais.
+- **Medidores verticais** para GPU, CPU e RAM, lado a lado sob uma única linha
+  de requisito. Dá para ver de relance qual componente segura o conjunto.
+- **Comparação sob o ponteiro.** O detalhe de cada componente aparece numa
+  linha só, ao passar o mouse (ou pelo foco do teclado) sobre a coluna. Sem
+  ponteiro, mostra o gargalo. Antes eram três linhas fixas ocupando a tela.
+- Arte do jogo em cor cheia, sangrando por baixo da barra de título.
+- Tipografia própria: Archivo (eixo de largura variável, para nome de jogo
+  longo caber em 360px) e Martian Mono só nos dados.
+- Sequência de entrada coreografada na troca de jogo.
+- Tela ociosa mostra a ficha da máquina em vez de uma linha de texto.
+
+### Correções
+
+- **Fechar as configurações deixava a janela em branco**, sem se recuperar
+  sozinha enquanto o mesmo jogo estivesse aberto.
+- **O contador de nota saltava para trás** na troca de jogo: o valor exibido só
+  era gravado ao fim da animação, então uma animação interrompida partia do
+  número errado.
+- **A arte chegando depois dos requisitos empurrava o layout 98px**, jogando os
+  chips para fora da janela. O espaço agora é reservado desde o início.
+- Seções marcadas como escondidas continuavam sendo pintadas: regras de autor
+  venciam o `[hidden]` da folha do navegador.
+- A extração de cor podia travar para sempre num contexto de canvas nulo.
+- Nota indisponível mostrava a agulha em zero, visualmente idêntica a "abaixo
+  do requisito", contradizendo o próprio texto.
+- `backdrop-filter` era inócuo em janela transparente no Windows: custava GPU e
+  não desenhava nada.
+
+### Acessibilidade
+
+- Contraste corrigido: o cinza secundário reprovava em 3.66:1, agora 5.12:1.
+- Os cinco interruptores das configurações ficavam invisíveis ao teclado.
+- Foco visível, seleção de texto e barra de rolagem tematizados.
+- Ícones da barra de título desenhados em SVG, no lugar de glifos de sistema.
+
 ## 1.0.1
 
 ### Correções

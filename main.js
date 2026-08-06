@@ -26,8 +26,12 @@ const logger = require('./lib/logger');
 const log = logger.scoped('main');
 
 const WIN_W = 360;
-const WIN_H = 600;
-const WIN_H_COMPACT = 316;
+// Alturas medidas contra o layout real. A arte da loja ocupa 196px porque ela
+// é a identidade do app — é dela que sai o acento de cor da interface toda.
+// Pior caso medido (arte + nome em duas linhas + chips em duas fileiras):
+// 587px; o compacto precisa de 351px. Ambos com ~5px de folga.
+const WIN_H = 592;
+const WIN_H_COMPACT = 356;
 
 let win = null;
 let tray = null;

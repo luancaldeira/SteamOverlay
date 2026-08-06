@@ -8,11 +8,11 @@ Sem digitar nada, sem colar nada, sem procurar os requisitos.
 
 [![plataforma](https://img.shields.io/badge/plataforma-Windows-0078D4)](#)
 [![steam](https://img.shields.io/badge/steam-app%20desktop-171a21)](#)
-[![versão](https://img.shields.io/badge/vers%C3%A3o-1.0.1-35d07f)](../../releases/latest)
+[![versão](https://img.shields.io/badge/vers%C3%A3o-1.1.0-96bf3e)](../../releases/latest)
 [![testes](https://img.shields.io/badge/testes-106%20passando-35d07f)](#qualidade)
 [![licença](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
 
-<img src="docs/shot-recomendado.png" width="330" alt="Overlay mostrando 60% de compatibilidade para Cyberpunk 2077 no perfil recomendado">
+<img src="docs/shot-recomendado.png" width="330" alt="Overlay mostrando nota 40 para Cyberpunk 2077 no perfil recomendado, com a interface tingida pelo amarelo da arte do jogo">
 
 </div>
 
@@ -69,8 +69,8 @@ continua funcionando **sem internet**.
 
 **Usuário final** — baixe em [Releases](../../releases/latest):
 
-- `Steam Spec Overlay Setup 1.0.1.exe` — instalador (cria atalho, permite escolher a pasta)
-- `Steam Spec Overlay 1.0.1.exe` — versão portable, roda sem instalar
+- `Steam Spec Overlay Setup 1.1.0.exe` — instalador (cria atalho, permite escolher a pasta)
+- `Steam Spec Overlay 1.1.0.exe` — versão portable, roda sem instalar
 
 > O executável não é assinado (certificado de code signing é pago), então o Windows pode
 > mostrar um aviso do SmartScreen na primeira execução. **Mais informações → Executar
@@ -112,11 +112,11 @@ A Steam só abre a porta de debug se existir um arquivo vazio chamado
 <table>
 <tr>
 <td width="50%" valign="top" align="center">
-<img src="docs/shot-recomendado.png" alt="Perfil recomendado, 60%">
+<img src="docs/shot-recomendado.png" alt="Perfil recomendado, nota 40">
 <b>Recomendado</b><br><sub>60% — “no limite, espere quedas”</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="docs/shot-minimo.png" alt="Perfil mínimo, 99%">
+<img src="docs/shot-minimo.png" alt="Perfil mínimo, nota 81">
 <b>Mínimo</b><br><sub>99% — “roda tranquilo”</sub>
 </td>
 </tr>

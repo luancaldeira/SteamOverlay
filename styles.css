@@ -50,6 +50,7 @@
      O valor aqui é só o fallback de quando não há arte — verde de ação da
      Steam. */
   --accent: #96bf3e;
+  --accent-fair: #6d8b36; /* mesma matiz do fallback, metade da saturação */
   --accent-ink: #10180a;
   --tint: transparent;
 
@@ -293,8 +294,8 @@ html, body {
   color: var(--ink-faint);
   transition: color 0.45s var(--ease);
 }
-#app.b-ok .read-num,
-#app.b-fair .read-num { color: var(--accent); }
+#app.b-ok .read-num { color: var(--accent); }
+#app.b-fair .read-num { color: var(--accent-fair); }
 #app.b-warn .read-num { color: var(--ink); }
 #app.b-bad .read-num { color: var(--alarm); }
 
@@ -306,8 +307,8 @@ html, body {
   color: var(--ink-dim);
   transition: color 0.45s var(--ease);
 }
-#app.b-ok .verdict,
-#app.b-fair .verdict { color: var(--accent); }
+#app.b-ok .verdict { color: var(--accent); }
+#app.b-fair .verdict { color: var(--accent-fair); }
 #app.b-warn .verdict { color: var(--ink); }
 #app.b-bad .verdict { color: var(--alarm); }
 .approx-tag {
@@ -361,8 +362,8 @@ html, body {
   clip-path: inset(0 calc(100% - var(--v, 0%)) 0 0);
   transition: clip-path 0.55s var(--ease-out), background 0.45s var(--ease);
 }
-#app.b-ok .rule-fill,
-#app.b-fair .rule-fill { background: var(--accent); }
+#app.b-ok .rule-fill { background: var(--accent); }
+#app.b-fair .rule-fill { background: var(--accent-fair); }
 #app.b-warn .rule-fill { background: var(--ink-dim); }
 #app.b-bad .rule-fill { background: var(--alarm); }
 
@@ -495,8 +496,8 @@ html, body {
   color: var(--ink);
   transition: color 0.4s var(--ease);
 }
-.comp.b-ok .comp-score,
-.comp.b-fair .comp-score { color: var(--accent); }
+.comp.b-ok .comp-score { color: var(--accent); }
+.comp.b-fair .comp-score { color: var(--accent-fair); }
 .comp.b-bad .comp-score { color: var(--alarm); }
 
 .bar {
@@ -517,8 +518,8 @@ html, body {
   clip-path: inset(calc(100% - var(--v, 0%)) 0 0 0);
   transition: clip-path 0.55s var(--ease-out), background 0.4s var(--ease);
 }
-.comp.b-ok .bar-fill,
-.comp.b-fair .bar-fill { background: var(--accent); }
+.comp.b-ok .bar-fill { background: var(--accent); }
+.comp.b-fair .bar-fill { background: var(--accent-fair); }
 .comp.b-warn .bar-fill { background: var(--ink-dim); }
 .comp.b-bad .bar-fill { background: var(--alarm); }
 /* coluna sem dado vira fantasma, não retângulo vazio */
@@ -605,7 +606,8 @@ html, body {
   letter-spacing: -0.02em;
   color: var(--ink-dim);
 }
-.dg.b-ok .dg-val, .dg.b-fair .dg-val { color: var(--accent); }
+.dg.b-ok .dg-val { color: var(--accent); }
+.dg.b-fair .dg-val { color: var(--accent-fair); }
 .dg.b-warn .dg-val { color: var(--ink); }
 .dg.b-bad .dg-val { color: var(--alarm); }
 

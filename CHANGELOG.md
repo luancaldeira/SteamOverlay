@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.1.1
+
+Quatro correções pontuais na 1.1.0, achadas em revisão de código e confirmadas
+com testes automatizados novos.
+
+- **Piscada do CDP recriava a interface inteira.** O jogo era chaveado por
+  `${source}:${appid}`; quando o debug do CEF caía por um instante e
+  reconectava, o mesmo jogo era reportado duas vezes com `source` diferente
+  (`fallback` → `cdp`), e cada troca de fonte disparava um recarregamento
+  completo — "carregando requisitos…", arte apagada, animação de entrada
+  de novo. Agora o jogo é chaveado só pelo `appid`; mudança de fonte vira
+  metadado, sem refetch.
+- **"Mostrar arte do jogo" não afetava o jogo já na tela**, só o próximo.
+  Desligar deixava a arte antiga; ligar não mostrava nada até trocar de jogo.
+- **GPU ou RAM não identificada escondia um fato que o app já sabia.** Quando
+  o modelo não batia com a tabela mas o requisito citava VRAM ou GB de RAM,
+  essa informação — a mais acionável da linha — era descartada em favor do
+  motivo genérico ("requisito não reconhecido"). Agora aparece: "seu
+  componente fora da tabela · VRAM 4/8 GB ✗".
+- **As notas "roda tranquilo" (85+) e "deve rodar bem" (65-84) usavam
+  exatamente a mesma cor.** `--accent-fair` agora reaproveita a matiz extraída
+  da arte, com metade da saturação, luminosidade recalculada com seu próprio
+  piso de contraste (pior caso medido: 4.71:1).
+
+### Verificação
+
+- Harness de integração que roda o `main.js` real sob Electron, com apenas os
+  módulos de rede/OS trocados por stubs, reproduzindo a sequência exata de
+  produção (CDP detecta → cai → fallback assume → CDP reconecta): confirma
+  zero refetch, `loadingReq` nunca voltando a `true`, e a arte preservada na
+  reconexão.
+- `npm run verify`: 106/106.
+
 ## 1.1.0
 
 Redesenho completo da interface. A lógica de detecção e comparação (`lib/`) não

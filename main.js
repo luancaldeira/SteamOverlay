@@ -74,10 +74,17 @@ function pushState() {
 }
 
 // ---- game handling -------------------------------------------------------
-let currentKey = null; // `${source}:${appid}` to dedupe redundant work
+// Keyed on appid alone, not `${source}:${appid}`. A brief CDP drop makes
+// envTick report the same game via the fallback detector, then CDP
+// reconnects a tick later and reports it again — two source changes for a
+// game the user never touched. Keying on source too treated each as a new
+// game: full teardown, "carregando requisitos…", art wiped, boot animation
+// replayed, all for a blip. Source is metadata now; only an appid change
+// triggers a refetch.
+let currentAppid = null;
 
 function clearGameState() {
-  currentKey = null;
+  currentAppid = null;
   state.game = null;
   state.artwork = null;
   state.requirements = null;
@@ -97,10 +104,10 @@ function buildComparison(info, specs) {
   return { comparison, extras };
 }
 
-async function loadArtwork(key, url) {
+async function loadArtwork(appid, url) {
   if (!url || !settings.get('showArtwork')) return;
   const dataUrl = await steamApi.getArtwork(url);
-  if (dataUrl && currentKey === key) {
+  if (dataUrl && currentAppid === appid) {
     state.artwork = dataUrl;
     pushState();
   }
@@ -108,17 +115,30 @@ async function loadArtwork(key, url) {
 
 async function handleGame(game, source) {
   if (!game) {
-    if (currentKey !== null) {
+    if (currentAppid !== null) {
       clearGameState();
       pushState();
     }
     return;
   }
-  const key = `${source}:${game.appid}`;
-  if (key === currentKey) return; // already handling/handled this game (retry clears currentKey)
-  currentKey = key;
 
-  state.game = { appid: game.appid, title: game.title || null, source, kind: game.kind || null };
+  if (game.appid === currentAppid) {
+    // Same game, only the metadata may have moved (e.g. fallback -> cdp on
+    // reconnect). Patch state.game in place — no refetch, no loading state,
+    // no boot animation.
+    let changed = false;
+    if (state.game.source !== source) { state.game.source = source; changed = true; }
+    const title = game.title || null;
+    if (title && state.game.title !== title) { state.game.title = title; changed = true; }
+    const kind = game.kind || null;
+    if (state.game.kind !== kind) { state.game.kind = kind; changed = true; }
+    if (changed) pushState();
+    return;
+  }
+  const appid = game.appid;
+  currentAppid = appid;
+
+  state.game = { appid, title: game.title || null, source, kind: game.kind || null };
   state.artwork = null;
   state.loadingReq = true;
   state.requirements = null;
@@ -129,18 +149,18 @@ async function handleGame(game, source) {
   pushState();
 
   try {
-    const info = await steamApi.getGameInfo(game.appid);
+    const info = await steamApi.getGameInfo(appid);
     // guard against a newer game having been selected while we awaited
-    if (currentKey !== key) return;
+    if (currentAppid !== appid) return;
     // specs may still be detecting if a game resolved first — wait for them
     // (cached, so this is instant once detected) so compare never sees null
     if (!state.specs) state.specs = await detectSpecs();
-    if (currentKey !== key) return;
+    if (currentAppid !== appid) return;
 
     if (info.name) state.game.title = info.name;
     state.requirements = info;
     state.stale = !!info.stale;
-    loadArtwork(key, info.headerImage);
+    loadArtwork(appid, info.headerImage);
 
     if (info.available) {
       const built = buildComparison(info, state.specs);
@@ -152,13 +172,13 @@ async function handleGame(game, source) {
       state.requirementsError = info.windows === false ? 'no-windows' : 'unavailable';
     }
   } catch (e) {
-    if (currentKey !== key) return;
-    log.warn('requirements lookup failed for', String(game.appid), e);
+    if (currentAppid !== appid) return;
+    log.warn('requirements lookup failed for', String(appid), e);
     state.requirements = null;
     state.comparison = null;
     state.requirementsError = 'network';
   } finally {
-    if (currentKey === key) {
+    if (currentAppid === appid) {
       state.loadingReq = false;
       pushState();
     }
@@ -213,7 +233,7 @@ async function envTick() {
 function setNoGameMode(mode) {
   const changed = state.mode !== mode || state.game !== null;
   state.mode = mode;
-  if (state.game !== null || currentKey !== null) clearGameState();
+  if (state.game !== null || currentAppid !== null) clearGameState();
   if (changed) pushState();
 }
 
@@ -378,6 +398,16 @@ function updateSettings(changes) {
   const prefs = settings.all();
   if ('logLevel' in changed) logger.setLevel(prefs.logLevel);
   if ('autoStart' in changed) applyAutoStart(prefs.autoStart);
+  if ('showArtwork' in changed) {
+    // loadArtwork() only reads this pref at fetch time, so flipping it while
+    // a game is already shown otherwise does nothing until the next game:
+    // unchecking left the old art on screen, checking showed nothing.
+    if (!prefs.showArtwork) {
+      state.artwork = null;
+    } else if (currentAppid != null && state.requirements && state.requirements.headerImage) {
+      loadArtwork(currentAppid, state.requirements.headerImage);
+    }
+  }
   if (
     'opacity' in changed ||
     'alwaysOnTop' in changed ||
@@ -446,7 +476,7 @@ ipcMain.handle('enableDebug', async () => {
 ipcMain.handle('retry', async () => {
   if (!state.game) return false;
   const { appid, title, source } = state.game;
-  currentKey = null;
+  currentAppid = null;
   try {
     // force a refetch, bypassing the disk cache for this appid
     await steamApi.getGameInfo(appid, { force: true });

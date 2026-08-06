@@ -174,11 +174,18 @@ function accentLightness(h, s, target) {
 
 function applyAccent(a) {
   if (!a) {
-    ['--accent', '--accent-ink', '--tint'].forEach((p) => app.style.removeProperty(p));
+    ['--accent', '--accent-fair', '--accent-ink', '--tint'].forEach((p) => app.style.removeProperty(p));
     return;
   }
   const l = accentLightness(a.h, a.s, 4.6);
   app.style.setProperty('--accent', `hsl(${a.h} ${a.s}% ${l}%)`);
+  // b-fair (65-84, "deve rodar bem") precisa se separar de b-ok (85+, "roda
+  // tranquilo") sem virar uma terceira matiz — o código de estado é peso e
+  // saturação, não cor nova. Mesma matiz, metade da saturação, luminosidade
+  // recalculada com seu próprio piso de contraste (pior caso medido: 4.71:1).
+  const fairS = Math.max(40, Math.round(a.s * 0.5));
+  const fairL = accentLightness(a.h, fairS, 4.5);
+  app.style.setProperty('--accent-fair', `hsl(${a.h} ${fairS}% ${fairL}%)`);
   // 8% deixava o texto do pill em 4.43:1 no pior azul; 5% folga o suficiente
   app.style.setProperty('--accent-ink', `hsl(${a.h} ${Math.round(a.s * 0.45)}% 5%)`);
   app.style.setProperty('--tint', `hsl(${a.h} 34% 7%)`);
@@ -294,6 +301,21 @@ function unidentifiedReason(data) {
   return 'não identificado';
 }
 
+// Mesmo sem casar o modelo, compare.js às vezes já sabe um fato duro — VRAM
+// pra GPU, GB exigido pra RAM — que ficava escondido atrás do motivo
+// genérico. É a informação mais acionável da linha; não jogar fora.
+function unidentifiedDetail(data) {
+  const reason = unidentifiedReason(data);
+  if (data && data.vram) {
+    const mark = data.vram.ok ? '' : ' ✗';
+    return `${reason} · VRAM ${data.vram.userGB}/${data.vram.requiredGB} GB${mark}`;
+  }
+  if (data && data.requiredGB != null) {
+    return `${reason} · requer ${data.requiredGB} GB`;
+  }
+  return reason;
+}
+
 // A barra não comunica "a nota" e sim a folga: o traço fixo em --datum (70%) é
 // o requisito atendido exatamente, então dá para ver se sobra ou falta.
 function setComponent(name, data) {
@@ -309,8 +331,9 @@ function setComponent(name, data) {
     scoreEl.textContent = '—';
     // --v em vez de width: os layouts horizontal e vertical leem o mesmo valor
     fill.style.setProperty('--v', '0%');
-    detail.textContent = unidentifiedReason(data);
+    detail.textContent = unidentifiedDetail(data);
     detail.title = (data && data.required) || '';
+    if (data && data.vram && !data.vram.ok) detail.classList.add('warn');
     row.title = detail.title;
     return;
   }

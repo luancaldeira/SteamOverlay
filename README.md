@@ -116,7 +116,7 @@ A Steam só abre a porta de debug se existir um arquivo vazio chamado
 <b>Recomendado</b><br><sub>60% — “no limite, espere quedas”</sub>
 </td>
 <td width="50%" valign="top" align="center">
-<img src="docs/shot-minimo.png" alt="Perfil mínimo, nota 81">
+<img src="docs/shot-minimo.png?v=2" alt="Perfil mínimo, nota 81">
 <b>Mínimo</b><br><sub>99% — “roda tranquilo”</sub>
 </td>
 </tr>
